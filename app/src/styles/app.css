@@ -1,0 +1,738 @@
+/* ============================================================
+   App shell + chrome + Screens panel
+   Plus a bridge mapping Dockview's --dv-* variables onto the
+   NightWorker/Open Design token palette so dock chrome and
+   panels share one look. Imported AFTER dockview.css so these
+   overrides win (equal specificity, later source order).
+   ============================================================ */
+
+/* -------- App shell ------------------------------------------------- */
+.app-shell {
+  display: grid;
+  grid-template-rows: 44px 1fr;
+  height: 100vh;
+  width: 100vw;
+  background: var(--bg-app);
+  color: var(--text);
+  font-family: var(--sans);
+  overflow: hidden;
+}
+.app-shell__body {
+  position: relative;
+  min-height: 0;
+  min-width: 0;
+}
+
+/* -------- Chrome bar ------------------------------------------------ */
+.chrome {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 44px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg-panel) 88%, var(--bg-subtle));
+  user-select: none;
+}
+.chrome__brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+}
+.chrome__logo {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: var(--radius-sm);
+  background: linear-gradient(135deg, var(--accent-tint) 0%, var(--accent-soft) 100%);
+  color: var(--accent);
+  font-size: 12px;
+}
+.chrome__title {
+  font-size: 13px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  color: var(--text-strong);
+}
+.chrome__sep {
+  width: 1px;
+  height: 16px;
+  background: var(--border);
+}
+.chrome__crumb {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.chrome__actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.chrome__save {
+  margin-left: 4px;
+  padding: 2px 9px;
+  border-radius: var(--radius-pill);
+  font-size: 10.5px;
+  font-weight: 600;
+  border: 1px solid var(--border);
+  background: var(--bg-subtle);
+  color: var(--text-muted);
+}
+.chrome__save--saved { color: var(--green); background: var(--green-bg); border-color: var(--green-border); }
+.chrome__save--saving { color: var(--blue); background: var(--blue-bg); border-color: var(--blue-border); }
+.chrome__save--dirty { color: var(--amber); background: var(--amber-bg); border-color: var(--amber-border); }
+.chrome__save--error { color: var(--red); background: var(--red-bg); border-color: var(--red-border); }
+.chrome__btn {
+  height: 28px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background var(--dur-quick) var(--ease-out),
+    border-color var(--dur-quick) var(--ease-out),
+    color var(--dur-quick) var(--ease-out);
+}
+.chrome__btn:hover {
+  background: var(--bg-subtle);
+  border-color: var(--border-strong);
+}
+.chrome__btn--accent {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  box-shadow: 0 6px 14px color-mix(in srgb, var(--accent) 24%, transparent);
+}
+.chrome__btn--accent:hover {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+  color: #fff;
+}
+
+/* -------- Screens panel (left) -------------------------------------- */
+.screens {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--bg-panel);
+  color: var(--text);
+  font-family: var(--sans);
+}
+.screens__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px 8px;
+}
+.screens__heading {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.screens__count {
+  font-size: 11px;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+.screens__list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 4px 8px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  scrollbar-width: thin;
+}
+.screen-item {
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  background: transparent;
+  color: inherit;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--dur-quick) var(--ease-out),
+    border-color var(--dur-quick) var(--ease-out);
+}
+.screen-item:hover {
+  background: var(--bg-subtle);
+  border-color: var(--border-soft);
+}
+.screen-item.is-active {
+  background: color-mix(in srgb, var(--accent) 9%, var(--bg-subtle));
+  border-color: color-mix(in srgb, var(--accent) 28%, var(--border));
+}
+.screen-item__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+}
+.screen-item__text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.screen-item__name {
+  font-size: 12.5px;
+  font-weight: 560;
+  color: var(--text-strong);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.screen-item__meta {
+  font-size: 10.5px;
+  color: var(--text-muted);
+}
+.screen-item__badge {
+  padding: 1px 7px;
+  border-radius: var(--radius-pill);
+  font-size: 10px;
+  font-weight: 600;
+  border: 1px solid;
+}
+/* Status colors — GitHub-diff semantics from the NightWorker spec. */
+.status-locked  .screen-item__dot { background: var(--text-soft); }
+.status-new     .screen-item__dot { background: var(--green); }
+.status-deleted .screen-item__dot { background: var(--red); }
+.status-changed .screen-item__dot { background: var(--amber); }
+
+.status-locked  .screen-item__badge { color: var(--text-muted); background: var(--bg-muted); border-color: var(--border); }
+.status-new     .screen-item__badge { color: var(--green); background: var(--green-bg); border-color: var(--green-border); }
+.status-deleted .screen-item__badge { color: var(--red); background: var(--red-bg); border-color: var(--red-border); }
+.status-changed .screen-item__badge { color: var(--amber); background: var(--amber-bg); border-color: var(--amber-border); }
+
+.status-deleted .screen-item__name {
+  text-decoration: line-through;
+  color: var(--text-muted);
+}
+
+.screens__legend {
+  flex: 0 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 10px 14px;
+  border-top: 1px solid var(--border-soft);
+}
+.legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10.5px;
+  color: var(--text-muted);
+}
+.legend-item__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+
+/* -------- Flow panel (React Flow) ---------------------------------- */
+.flow-panel {
+  position: absolute;
+  inset: 0;
+}
+.flow-panel .react-flow {
+  --xy-background-pattern-color: var(--border-strong);
+  --xy-edge-stroke-default: var(--border-strong);
+  --xy-edge-stroke-selected-default: var(--accent);
+  --xy-connectionline-stroke-default: var(--accent);
+  --xy-attribution-background-color: transparent;
+  background: var(--bg-app);
+}
+
+/* Controls + minimap chrome themed to the OD palette. */
+.flow-panel .react-flow__controls {
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-md);
+  overflow: hidden;
+}
+.flow-panel .react-flow__controls-button {
+  width: 26px;
+  height: 26px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-panel);
+  color: var(--text-muted);
+  fill: currentColor;
+}
+.flow-panel .react-flow__controls-button:hover {
+  background: var(--bg-subtle);
+  color: var(--text-strong);
+}
+.flow-panel .react-flow__minimap {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-panel);
+  overflow: hidden;
+}
+.flow-panel .react-flow__minimap-mask {
+  fill: color-mix(in srgb, var(--bg-app) 64%, transparent);
+}
+
+/* Edge diff colors. */
+.flow-edge .react-flow__edge-path {
+  stroke-width: 1.5;
+}
+.flow-edge.status-new .react-flow__edge-path {
+  stroke: var(--green);
+}
+
+/* Handles. */
+.flow-panel .react-flow__handle {
+  width: 9px;
+  height: 9px;
+  background: var(--bg-panel);
+  border: 1.5px solid var(--border-strong);
+}
+.flow-panel .react-flow__handle:hover {
+  border-color: var(--accent);
+}
+
+/* -------- Screen node (card) --------------------------------------- */
+.screen-node {
+  position: relative;
+  display: grid;
+  grid-template-columns: 4px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  width: 208px;
+  padding: 10px 12px 10px 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-panel);
+  box-shadow: var(--shadow-sm);
+  color: var(--text);
+  font-family: var(--sans);
+  transition: border-color var(--dur-quick) var(--ease-out),
+    box-shadow var(--dur-quick) var(--ease-out);
+}
+.screen-node:hover {
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-md);
+}
+.screen-node.is-selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
+}
+.screen-node__rail {
+  width: 4px;
+  align-self: stretch;
+  border-radius: var(--radius-md) 0 0 var(--radius-md);
+  background: var(--text-soft);
+}
+.screen-node__body {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.screen-node__top {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+.screen-node__name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-strong);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.screen-node__meta {
+  font-size: 11px;
+  color: var(--text-muted);
+  padding-left: 14px;
+}
+.screen-node__badge {
+  margin-right: 0;
+}
+
+/* Status → rail color (dot color reuses .screen-item__dot rules). */
+.screen-node.status-locked  .screen-node__rail { background: var(--text-soft); }
+.screen-node.status-new     .screen-node__rail { background: var(--green); }
+.screen-node.status-deleted .screen-node__rail { background: var(--red); }
+.screen-node.status-changed .screen-node__rail { background: var(--amber); }
+
+.screen-node.status-deleted {
+  opacity: 0.7;
+}
+.screen-node.status-deleted .screen-node__name {
+  text-decoration: line-through;
+  color: var(--text-muted);
+}
+
+/* -------- Dockview bridge ------------------------------------------- */
+.dv-content-container {
+  position: relative;
+}
+.dockview-theme-light,
+.dockview-theme-dark {
+  --dv-paneview-active-outline-color: var(--accent);
+  --dv-tabs-and-actions-container-background-color: color-mix(in srgb, var(--bg-panel) 88%, var(--bg-subtle));
+  --dv-group-view-background-color: var(--bg-panel);
+
+  --dv-activegroup-visiblepanel-tab-background-color: var(--bg-panel);
+  --dv-activegroup-visiblepanel-tab-color: var(--text-strong);
+  --dv-activegroup-hiddenpanel-tab-background-color: transparent;
+  --dv-activegroup-hiddenpanel-tab-color: var(--text-muted);
+  --dv-inactivegroup-visiblepanel-tab-background-color: var(--bg-subtle);
+  --dv-inactivegroup-visiblepanel-tab-color: var(--text-muted);
+  --dv-inactivegroup-hiddenpanel-tab-background-color: transparent;
+  --dv-inactivegroup-hiddenpanel-tab-color: var(--text-faint);
+
+  --dv-tab-divider-color: var(--border);
+  --dv-separator-border: var(--border);
+  --dv-paneview-header-border-color: var(--border);
+
+  --dv-sash-color: transparent;
+  --dv-active-sash-color: var(--accent);
+
+  --dv-tab-group-color: var(--accent);
+  --dv-icon-hover-background-color: var(--bg-fill-secondary);
+  --dv-drag-over-background-color: color-mix(in srgb, var(--accent) 12%, transparent);
+  --dv-drag-over-border-color: var(--accent);
+
+  --dv-tabs-and-actions-container-font-size: 12px;
+  --dv-tab-border-radius: var(--radius-sm);
+  --dv-border-radius: var(--radius);
+}
+
+/* -------- Tree navigator (left) ------------------------------------ */
+.tree {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--bg-panel);
+  color: var(--text);
+  font-family: var(--sans);
+}
+.tree__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px 8px;
+}
+.tree__heading {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.tree__count {
+  font-size: 11px;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+.tree__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 4px 8px 12px;
+  scrollbar-width: thin;
+}
+.tree-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding-right: 8px;
+  border-radius: var(--radius-sm);
+  cursor: default;
+  user-select: none;
+}
+.tree-row:hover {
+  background: var(--bg-subtle);
+}
+.tree-row__caret {
+  width: 12px;
+  flex: 0 0 auto;
+  font-size: 9px;
+  color: var(--text-faint);
+  text-align: center;
+  transition: transform var(--dur-quick) var(--ease-out);
+}
+.tree-row__caret.is-open {
+  transform: rotate(90deg);
+}
+.tree-row__caret.is-leaf {
+  visibility: hidden;
+}
+.tree-row__icon {
+  width: 14px;
+  flex: 0 0 auto;
+  font-size: 11px;
+  color: var(--text-soft);
+  text-align: center;
+}
+.tree-row__dot {
+  flex: 0 0 auto;
+}
+.tree-row__label {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12.5px;
+  color: var(--text);
+}
+.tree-row.kind-flow > .tree-row__label {
+  font-weight: 650;
+  color: var(--text-strong);
+}
+.tree-row.kind-group > .tree-row__label {
+  font-weight: 600;
+  color: var(--text-muted);
+}
+.tree-row.kind-state > .tree-row__label {
+  font-size: 11.5px;
+  color: var(--text-muted);
+}
+.tree-row.status-deleted > .tree-row__label {
+  text-decoration: line-through;
+  color: var(--text-muted);
+}
+.tree-row__badge {
+  flex: 0 0 auto;
+}
+
+/* -------- Project picker ------------------------------------------- */
+.picker-shell {
+  height: 100vh;
+  width: 100vw;
+  background: var(--bg-app);
+  color: var(--text);
+  font-family: var(--sans);
+  overflow: auto;
+}
+.picker {
+  min-height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px;
+}
+.picker__card {
+  width: 100%;
+  max-width: 540px;
+  padding: 28px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+}
+.picker__head {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  margin-bottom: 22px;
+}
+.picker__logo {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  flex: 0 0 auto;
+  border-radius: var(--radius-md);
+  background: linear-gradient(135deg, var(--accent-tint) 0%, var(--accent-soft) 100%);
+  color: var(--accent);
+  font-size: 18px;
+}
+.picker__title {
+  margin: 0;
+  font-size: 19px;
+  font-weight: 680;
+  letter-spacing: -0.01em;
+  color: var(--text-strong);
+}
+.picker__subtitle {
+  margin: 4px 0 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+.picker__choices {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.picker__choice {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 14px 16px;
+  text-align: left;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg);
+  color: var(--text);
+  cursor: pointer;
+  font-family: inherit;
+  transition: border-color var(--dur-quick) var(--ease-out),
+    background var(--dur-quick) var(--ease-out);
+}
+.picker__choice:hover {
+  border-color: var(--accent);
+  background: var(--accent-tint);
+}
+.picker__choice--ghost {
+  background: transparent;
+}
+.picker__choice-title {
+  font-size: 14px;
+  font-weight: 620;
+  color: var(--text-strong);
+}
+.picker__choice-desc {
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+.picker__browse {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.picker__browse-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.picker__location {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.picker__link {
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font-size: 12px;
+  cursor: pointer;
+  font-family: inherit;
+}
+.picker__list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 280px;
+  overflow-y: auto;
+}
+.picker__project {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  text-align: left;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--text);
+  cursor: pointer;
+  font-family: inherit;
+  transition: border-color var(--dur-quick) var(--ease-out),
+    background var(--dur-quick) var(--ease-out);
+}
+.picker__project:hover {
+  border-color: var(--accent);
+  background: var(--accent-tint);
+}
+.picker__project-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-strong);
+}
+.picker__project-id {
+  font-size: 11px;
+  color: var(--text-faint);
+  font-family: var(--mono);
+}
+.picker__create {
+  display: flex;
+  gap: 8px;
+}
+.picker__input {
+  flex: 1 1 auto;
+  height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 13px;
+  font-family: inherit;
+}
+.picker__input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+.picker__btn {
+  height: 36px;
+  padding: 0 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 560;
+  font-family: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.picker__btn--accent {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+.picker__btn--accent:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+.picker__btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.picker__note {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+.picker__error {
+  margin: 14px 0 0;
+  padding: 8px 12px;
+  font-size: 12px;
+  color: var(--red);
+  background: var(--red-bg);
+  border: 1px solid var(--red-border);
+  border-radius: var(--radius);
+}
