@@ -14,6 +14,12 @@ rust-version = "1.77.2"
 name = "app_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+# Name the binary "LateNighter" so macOS shows that (not "app") in the dock /
+# menu bar — including in `tauri dev`, where the bare binary's filename is used.
+[[bin]]
+name = "LateNighter"
+path = "src/main.rs"
+
 [build-dependencies]
 tauri-build = { version = "2.6.2", features = [] }
 

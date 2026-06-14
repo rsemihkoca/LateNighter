@@ -1,4 +1,5 @@
 import type { ProjectDoc } from '../doc/types'
+import type { TreeEntry } from '../doc/treeSync'
 
 export type StorageKind = 'fs' | 'local'
 
@@ -24,6 +25,12 @@ export interface ProjectStorage {
   saveProject(ref: ProjectRef, doc: ProjectDoc): Promise<void>
   /** Monotonic revision token (lastModified) for external-change polling. */
   getRevision(ref: ProjectRef): Promise<number>
+
+  // ---- Folder-tree mirror (Tauri only; other backends omit these) -------
+  /** Max mtime across the on-disk mirror folder — folder-side change token. */
+  getTreeRevision?(ref: ProjectRef): Promise<number>
+  /** Read the mirror folder back into a flat list of node entries. */
+  readTree?(ref: ProjectRef): Promise<TreeEntry[]>
 }
 
 export function slugify(name: string): string {

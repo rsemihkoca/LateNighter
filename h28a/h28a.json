@@ -1,0 +1,61 @@
+{
+  "version": 1,
+  "name": "h28a",
+  "deviceId": "iphone-14",
+  "flows": [
+    {
+      "id": "flow-main",
+      "name": "h28a",
+      "kind": "main",
+      "screenIds": [
+        "screen-mqdv881g",
+        "screen-mqdvihyy"
+      ]
+    }
+  ],
+  "screens": [
+    {
+      "id": "screen-mqdv881g",
+      "name": "yeniEkran1",
+      "meta": "Taslak",
+      "status": "locked",
+      "surface": "preview",
+      "position": {
+        "x": 0,
+        "y": 540
+      },
+      "states": []
+    },
+    {
+      "id": "screen-mqdvihyy",
+      "name": "yeniEkran2",
+      "meta": "Taslak",
+      "status": "locked",
+      "surface": "preview",
+      "position": {
+        "x": 260,
+        "y": 540
+      },
+      "states": []
+    }
+  ],
+  "edges": [
+    {
+      "id": "e-screen-mqdv881g-screen-mqdvihyy",
+      "source": "screen-mqdv881g",
+      "target": "screen-mqdvihyy"
+    }
+  ],
+  "commits": [
+    {
+      "id": "commit-mqdvjvxe",
+      "message": "Fsfsdf",
+      "at": 1781447007074,
+      "summary": {
+        "added": 2,
+        "changed": 0,
+        "removed": 0
+      }
+    }
+  ]
+}

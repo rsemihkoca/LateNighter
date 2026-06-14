@@ -5,9 +5,9 @@ import { slugify, type ProjectRef, type ProjectStorage } from './types'
 // File System Access (Firefox/Safari) and for a no-folder "scratch" start.
 // There is no real .json file on disk — export/import covers that.
 
-const INDEX_KEY = 'nightworker:projects'
-const docKey = (id: string) => `nightworker:project:${id}`
-const revKey = (id: string) => `nightworker:rev:${id}`
+const INDEX_KEY = 'latenighter:projects'
+const docKey = (id: string) => `latenighter:project:${id}`
+const revKey = (id: string) => `latenighter:rev:${id}`
 
 interface IndexEntry {
   id: string

@@ -1,9 +1,10 @@
 import { invoke, isTauri } from '@tauri-apps/api/core'
 import { open } from '@tauri-apps/plugin-dialog'
 import type { ProjectDoc } from '../doc/types'
+import { docToTreeSpec, type FolderSpec, type TreeEntry } from '../doc/treeSync'
 import { slugify, type ProjectRef, type ProjectStorage } from './types'
 
-const LAST_DIR_KEY = 'nightworker:tauri-dir'
+const LAST_DIR_KEY = 'latenighter:tauri-dir'
 
 /** True when running inside the Tauri desktop shell (not a plain browser). */
 export function isTauriRuntime(): boolean {
@@ -68,10 +69,25 @@ export function createTauriStorage(dir: string): ProjectStorage {
 
     async saveProject(ref: ProjectRef, doc: ProjectDoc): Promise<void> {
       await invoke('write_project', { dir, id: ref.id, contents: serialize(doc) })
+      // Mirror the doc to a real nested folder tree alongside the JSON.
+      const folders: FolderSpec[] = docToTreeSpec(doc)
+      try {
+        await invoke('materialize_tree', { dir, id: ref.id, folders })
+      } catch (e) {
+        console.error('LateNighter: materialize_tree failed', e)
+      }
     },
 
     async getRevision(ref: ProjectRef): Promise<number> {
       return invoke<number>('project_revision', { dir, id: ref.id })
+    },
+
+    async getTreeRevision(ref: ProjectRef): Promise<number> {
+      return invoke<number>('tree_revision', { dir, id: ref.id })
+    },
+
+    async readTree(ref: ProjectRef): Promise<TreeEntry[]> {
+      return invoke<TreeEntry[]>('read_tree', { dir, id: ref.id })
     },
   }
 }

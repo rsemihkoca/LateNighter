@@ -15,7 +15,19 @@ import {
   pickTauriDirectory,
   restoreTauriDir,
 } from '../storage/tauri'
-import type { ProjectRef, ProjectStorage } from '../storage/types'
+import { slugify, type ProjectRef, type ProjectStorage } from '../storage/types'
+
+function findFolderProject(storage: ProjectStorage, projects: ProjectRef[]) {
+  const folderId = slugify(storage.label)
+  const folderName = storage.label.toLocaleLowerCase()
+
+  return (
+    projects.find(
+      (project) =>
+        project.id === folderId || project.name.toLocaleLowerCase() === folderName,
+    ) ?? (projects.length === 1 ? projects[0] : null)
+  )
+}
 
 export function ProjectPicker({ onOpen }: { onOpen: (session: DocSession) => void }) {
   const tauri = isTauriRuntime()
@@ -23,28 +35,77 @@ export function ProjectPicker({ onOpen }: { onOpen: (session: DocSession) => voi
   const [storage, setStorage] = useState<ProjectStorage | null>(null)
   const [projects, setProjects] = useState<ProjectRef[]>([])
   const [lastDir, setLastDir] = useState<FileSystemDirectoryHandle | null>(null)
-  const [lastTauriDir, setLastTauriDir] = useState<string | null>(null)
+  const [lastTauriDir, setLastTauriDir] = useState<string | null>(() =>
+    isTauriRuntime() ? restoreTauriDir() : null,
+  )
   const [newName, setNewName] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    if (tauri) setLastTauriDir(restoreTauriDir())
-    else if (fsSupported) restoreDirectory().then(setLastDir).catch(() => {})
+    if (tauri || !fsSupported) return
+
+    let active = true
+    restoreDirectory()
+      .then((dir) => {
+        if (active) setLastDir(dir)
+      })
+      .catch(() => {})
+    return () => {
+      active = false
+    }
   }, [tauri, fsSupported])
 
-  const useStorage = useCallback(async (s: ProjectStorage) => {
+  const openProject = useCallback(
+    async (s: ProjectStorage, ref: ProjectRef) => {
+      const doc = await s.loadProject(ref)
+      onOpen({ storage: s, ref, doc })
+    },
+    [onOpen],
+  )
+
+  const createProject = useCallback(
+    async (s: ProjectStorage, name: string) => {
+      const doc = createInitialDoc(name)
+      const ref = await s.createProject(name, doc)
+      onOpen({ storage: s, ref, doc })
+    },
+    [onOpen],
+  )
+
+  const activateStorage = useCallback(async (
+    s: ProjectStorage,
+    options: { openOrCreateFolderProject?: boolean } = {},
+  ) => {
     setBusy(true)
     setError(null)
+    let opened = false
     try {
-      setProjects(await s.listProjects())
+      const refs = await s.listProjects()
+
+      if (options.openOrCreateFolderProject) {
+        const folderProject = findFolderProject(s, refs)
+        if (folderProject) {
+          await openProject(s, folderProject)
+          opened = true
+          return
+        }
+
+        if (refs.length === 0) {
+          await createProject(s, s.label)
+          opened = true
+          return
+        }
+      }
+
+      setProjects(refs)
       setStorage(s)
     } catch (e) {
       setError(String(e))
     } finally {
-      setBusy(false)
+      if (!opened) setBusy(false)
     }
-  }, [])
+  }, [createProject, openProject])
 
   const chooseFolder = useCallback(async () => {
     try {
@@ -52,30 +113,41 @@ export function ProjectPicker({ onOpen }: { onOpen: (session: DocSession) => voi
         const dir = await pickTauriDirectory()
         if (dir) {
           setLastTauriDir(dir)
-          await useStorage(createTauriStorage(dir))
+          await activateStorage(createTauriStorage(dir), {
+            openOrCreateFolderProject: true,
+          })
         }
         return
       }
       const dir = await pickDirectory()
-      await useStorage(createFsStorage(dir))
+      await activateStorage(createFsStorage(dir), { openOrCreateFolderProject: true })
     } catch (e) {
       setError(String(e))
     }
-  }, [tauri, useStorage])
+  }, [activateStorage, tauri])
 
   const reconnectTauri = useCallback(async () => {
-    if (lastTauriDir) await useStorage(createTauriStorage(lastTauriDir))
-  }, [lastTauriDir, useStorage])
+    if (lastTauriDir) {
+      await activateStorage(createTauriStorage(lastTauriDir), {
+        openOrCreateFolderProject: true,
+      })
+    }
+  }, [activateStorage, lastTauriDir])
 
   const reconnectLast = useCallback(async () => {
     if (!lastDir) return
     try {
-      if (await ensurePermission(lastDir)) await useStorage(createFsStorage(lastDir))
-      else setError('Klasör izni verilmedi.')
+      if (await ensurePermission(lastDir)) {
+        await activateStorage(createFsStorage(lastDir), {
+          openOrCreateFolderProject: true,
+        })
+      } else {
+        setError('Klasör izni verilmedi.')
+      }
     } catch (e) {
       setError(String(e))
     }
-  }, [lastDir, useStorage])
+  }, [activateStorage, lastDir])
 
   const openExisting = useCallback(
     async (ref: ProjectRef) => {
@@ -83,30 +155,27 @@ export function ProjectPicker({ onOpen }: { onOpen: (session: DocSession) => voi
       setBusy(true)
       setError(null)
       try {
-        const doc = await storage.loadProject(ref)
-        onOpen({ storage, ref, doc })
+        await openProject(storage, ref)
       } catch (e) {
         setError(String(e))
         setBusy(false)
       }
     },
-    [storage, onOpen],
+    [openProject, storage],
   )
 
   const createNew = useCallback(async () => {
     if (!storage) return
-    const name = newName.trim() || 'Yeni Proje'
+    const name = newName.trim() || storage.label
     setBusy(true)
     setError(null)
     try {
-      const doc = createInitialDoc(name)
-      const ref = await storage.createProject(name, doc)
-      onOpen({ storage, ref, doc })
+      await createProject(storage, name)
     } catch (e) {
       setError(String(e))
       setBusy(false)
     }
-  }, [storage, newName, onOpen])
+  }, [createProject, storage, newName])
 
   return (
     <div className="picker">
@@ -116,7 +185,7 @@ export function ProjectPicker({ onOpen }: { onOpen: (session: DocSession) => voi
             ◆
           </span>
           <div>
-            <h1 className="picker__title">NightWorker</h1>
+            <h1 className="picker__title">LateNighter</h1>
             <p className="picker__subtitle">
               Bir proje seç — JSON tek kaynak, React Flow ve tree onun görünümü.
             </p>
@@ -130,7 +199,7 @@ export function ProjectPicker({ onOpen }: { onOpen: (session: DocSession) => voi
                 <button className="picker__choice" type="button" onClick={chooseFolder}>
                   <span className="picker__choice-title">📂 Klasör Seç</span>
                   <span className="picker__choice-desc">
-                    JSON dosyaları seçtiğin klasörde durur — native, tam disk erişimi.
+                    Klasör adıyla projeyi açar; yoksa boş bir proje oluşturur.
                   </span>
                 </button>
                 {lastTauriDir && (
@@ -145,7 +214,7 @@ export function ProjectPicker({ onOpen }: { onOpen: (session: DocSession) => voi
                 <button className="picker__choice" type="button" onClick={chooseFolder}>
                   <span className="picker__choice-title">📁 Klasör Seç</span>
                   <span className="picker__choice-desc">
-                    JSON dosyaları seçtiğin klasörde durur — diskte görür, düzenlersin.
+                    Klasör adıyla projeyi açar; yoksa boş bir proje oluşturur.
                   </span>
                 </button>
                 {lastDir && (
@@ -164,7 +233,7 @@ export function ProjectPicker({ onOpen }: { onOpen: (session: DocSession) => voi
             <button
               className="picker__choice picker__choice--ghost"
               type="button"
-              onClick={() => useStorage(localStorageBackend)}
+              onClick={() => activateStorage(localStorageBackend)}
             >
               <span className="picker__choice-title">⚡ Dosyasız başla (scratch)</span>
               <span className="picker__choice-desc">
@@ -190,7 +259,9 @@ export function ProjectPicker({ onOpen }: { onOpen: (session: DocSession) => voi
 
             <div className="picker__list">
               {projects.length === 0 && (
-                <p className="picker__note">Bu konumda proje yok — yenisini oluştur.</p>
+                <p className="picker__note">
+                  Bu konumda proje yok — klasör adıyla oluşturabilirsin.
+                </p>
               )}
               {projects.map((ref) => (
                 <button
@@ -209,7 +280,7 @@ export function ProjectPicker({ onOpen }: { onOpen: (session: DocSession) => voi
             <div className="picker__create">
               <input
                 className="picker__input"
-                placeholder="Yeni proje adı…"
+                placeholder="Proje adı (opsiyonel)…"
                 value={newName}
                 disabled={busy}
                 onChange={(e) => setNewName(e.target.value)}

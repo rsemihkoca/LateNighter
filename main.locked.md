@@ -85,6 +85,13 @@ MAIN_FEATURES
     Flowlara ekran ekleme
     flowlar yatay iken
     stateler dikey olmalı
+  FLOW-EXPLORER-JSON three way bidirectional
+    aynı şekilde jsonda değişiklik varsa ilgili folderlar ve filelar yaratılmalı, ui'dan silinen explorerda da silinöeli
+    flow -> screen -> state yapısı korunacak mesela main flow main.flow isminde bir folder olacak isimlendirmelere bu
+    yüzden her yerde aynı tutmaya çalış bunun altındaki ekran mesela proofA.screen olacak bunun altında state varsa
+    loading.state folder'ı olacak
+    eğer ekran altında flow varsa mesela proofA.screen altında ne bileyim onboarding.flow olacak
+    isimlendirmeleri ui json ve explorerda aynı tut
   (GPT)
     1. Flow'a ekran ekleyip bağlama (link) — node ekleme + edge çekme. Sık ama ekran-içi iterasyondan daha az; çünkü bir flow kurulduktan sonra asıl zaman ekranların kendisinde geçer.
     2. İçerik / data doldurma — lorem ipsum'u gerçekçi veriyle değiştirmek, mock data üretmek. Placeholder'dan "gerçek" görünüme geçiş.

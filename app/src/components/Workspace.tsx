@@ -1,17 +1,24 @@
 import {
+  DockviewDefaultTab,
   DockviewReact,
   themeDark,
   themeLight,
   type DockviewReadyEvent,
+  type IDockviewPanelHeaderProps,
   type IDockviewPanelProps,
 } from 'dockview-react'
 import { useTheme } from '../theme/ThemeContext'
 import { FlowCanvas } from './FlowCanvas'
-import { TreeNavigator } from './TreeNavigator'
+import { Sidebar } from './Sidebar'
 
 const components: Record<string, (props: IDockviewPanelProps) => React.JSX.Element> = {
   flow: () => <FlowCanvas />,
-  tree: () => <TreeNavigator />,
+  tree: () => <Sidebar />,
+}
+
+// Tab'lar kapatılamaz: default tab'ı hideClose ile sarmalayıp X butonunu gizle.
+function NoCloseTab(props: IDockviewPanelHeaderProps) {
+  return <DockviewDefaultTab {...props} hideClose />
 }
 
 function onReady(event: DockviewReadyEvent) {
@@ -28,7 +35,7 @@ function onReady(event: DockviewReadyEvent) {
   const tree = event.api.addPanel({
     id: 'tree',
     component: 'tree',
-    title: 'Tree',
+    title: 'Explorer',
     position: { referencePanel: 'flow', direction: 'left' },
   })
   tree.api.setSize({ width: 300 })
@@ -39,6 +46,7 @@ export function Workspace() {
   return (
     <DockviewReact
       components={components}
+      defaultTabComponent={NoCloseTab}
       onReady={onReady}
       theme={theme === 'dark' ? themeDark : themeLight}
     />

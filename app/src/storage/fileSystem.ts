@@ -12,7 +12,7 @@ export function isFileSystemAccessSupported(): boolean {
 /** Prompt the user to pick a folder; persist the handle for next session. */
 export async function pickDirectory(): Promise<FileSystemDirectoryHandle> {
   const dir = await window.showDirectoryPicker({
-    id: 'nightworker-projects',
+    id: 'latenighter-projects',
     mode: 'readwrite',
   })
   await idbSet(HANDLE_KEY, dir)

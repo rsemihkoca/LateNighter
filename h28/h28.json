@@ -1,21 +1,21 @@
 {
   "version": 1,
-  "name": "Yeni Proje",
+  "name": "H28",
+  "deviceId": "iphone-14-pro",
   "flows": [
     {
       "id": "flow-main",
-      "name": "Main Flow (Happy Path)",
+      "name": "main",
       "kind": "main",
       "screenIds": [
         "onboarding",
         "login",
-        "home",
-        "profile"
+        "home"
       ]
     },
     {
       "id": "flow-permissions",
-      "name": "Permissions",
+      "name": "permissions",
       "kind": "sub",
       "parentFlowId": "flow-main",
       "startsFromScreenId": "home",
@@ -27,7 +27,7 @@
   "screens": [
     {
       "id": "onboarding",
-      "name": "Onboarding",
+      "name": "onboarding",
       "meta": "Auth",
       "status": "locked",
       "position": {
@@ -37,14 +37,14 @@
       "states": [
         {
           "id": "onboarding-main",
-          "name": "Main",
+          "name": "main",
           "status": "locked"
         }
       ]
     },
     {
       "id": "login",
-      "name": "Login",
+      "name": "login",
       "meta": "Auth",
       "status": "changed",
       "position": {
@@ -54,19 +54,19 @@
       "states": [
         {
           "id": "login-main",
-          "name": "Main",
+          "name": "main",
           "status": "locked"
         },
         {
           "id": "login-error",
-          "name": "Error",
+          "name": "error",
           "status": "changed"
         }
       ]
     },
     {
       "id": "home",
-      "name": "Home Feed",
+      "name": "home",
       "meta": "Main",
       "status": "new",
       "position": {
@@ -76,46 +76,29 @@
       "states": [
         {
           "id": "home-main",
-          "name": "Main",
+          "name": "main",
           "status": "new"
         },
         {
           "id": "home-loading",
-          "name": "Loading",
+          "name": "loading",
           "status": "new"
         },
         {
           "id": "home-empty",
-          "name": "Empty",
+          "name": "empty",
           "status": "new"
         },
         {
           "id": "home-error",
-          "name": "Error",
+          "name": "error",
           "status": "new"
-        }
-      ]
-    },
-    {
-      "id": "profile",
-      "name": "Profile",
-      "meta": "Main",
-      "status": "locked",
-      "position": {
-        "x": 780,
-        "y": 80
-      },
-      "states": [
-        {
-          "id": "profile-main",
-          "name": "Main",
-          "status": "locked"
         }
       ]
     },
     {
       "id": "camera-perm",
-      "name": "Camera Permission",
+      "name": "cameraPerm",
       "meta": "Gap · Permissions",
       "status": "new",
       "position": {
@@ -125,26 +108,15 @@
       "states": [
         {
           "id": "cam-empty",
-          "name": "Empty",
+          "name": "empty",
           "status": "new"
         },
         {
           "id": "cam-granted",
-          "name": "Granted",
+          "name": "granted",
           "status": "new"
         }
       ]
-    },
-    {
-      "id": "settings-old",
-      "name": "Old Settings",
-      "meta": "Main",
-      "status": "deleted",
-      "position": {
-        "x": 1040,
-        "y": 320
-      },
-      "states": []
     }
   ],
   "edges": [
@@ -157,11 +129,6 @@
       "id": "e-login-home",
       "source": "login",
       "target": "home"
-    },
-    {
-      "id": "e-home-profile",
-      "source": "home",
-      "target": "profile"
     },
     {
       "id": "e-home-cam",

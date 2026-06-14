@@ -4,10 +4,12 @@ import { DocProvider, type DocSession } from './doc/DocContext'
 import { ChromeBar } from './components/ChromeBar'
 import { Workspace } from './components/Workspace'
 import { ProjectPicker } from './components/ProjectPicker'
+import { isTauriRuntime } from './storage/tauri'
 
 export default function App() {
-  const [theme, setTheme] = useState<Theme>('light')
+  const [theme, setTheme] = useState<Theme>('dark')
   const [session, setSession] = useState<DocSession | null>(null)
+  const isTauriShell = isTauriRuntime()
 
   const toggleTheme = useCallback(
     () => setTheme((t) => (t === 'light' ? 'dark' : 'light')),
@@ -20,7 +22,11 @@ export default function App() {
     <ThemeContext.Provider value={themeValue}>
       {session ? (
         <DocProvider session={session} onClose={closeProject}>
-          <div className="app-shell" data-theme={theme}>
+          <div
+            className="app-shell"
+            data-theme={theme}
+            data-tauri-window={isTauriShell ? 'true' : undefined}
+          >
             <ChromeBar />
             <div className="app-shell__body">
               <Workspace />
@@ -28,7 +34,12 @@ export default function App() {
           </div>
         </DocProvider>
       ) : (
-        <div className="picker-shell" data-theme={theme}>
+        <div
+          className="picker-shell"
+          data-theme={theme}
+          data-tauri-window={isTauriShell ? 'true' : undefined}
+        >
+          <div className="window-drag-strip" data-tauri-drag-region aria-hidden />
           <ProjectPicker onOpen={setSession} />
         </div>
       )}

@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "reactflow-mcp": {
+      "command": "npx",
+      "args": ["-y", "@og-mcp/reactflow-mcp"]
+    }
+  }
+}

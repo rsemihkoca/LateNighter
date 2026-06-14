@@ -1,50 +1,56 @@
 import { MarkerType, type Edge, type Node } from '@xyflow/react'
 import type { ScreenNodeData } from '../components/ScreenNode'
+import { computeLayout } from './layout'
 import type { Flow, ProjectDoc, Screen, ScreenStatus } from './types'
 
 // -------- Canvas projection (doc → React Flow) ----------------------
 
 export function docToNodes(doc: ProjectDoc): Node<ScreenNodeData>[] {
+  // Positions are derived from the graph (git-graph lanes), not from the
+  // stored screen.position — nodes are not draggable.
+  const layout = computeLayout(doc)
   return doc.screens.map((screen) => ({
     id: screen.id,
     type: 'screen',
-    position: screen.position,
+    position: layout.byId.get(screen.id) ?? screen.position,
+    draggable: false,
     data: {
       name: screen.name,
       meta: screen.meta,
       status: screen.status,
+      surface: screen.surface ?? 'preview',
+      liveHtml: screen.liveHtml,
       stateCount: screen.states.length,
+      deviceId: doc.deviceId,
     },
   }))
 }
 
 export function docToEdges(doc: ProjectDoc): Edge[] {
-  const byId = new Map(doc.screens.map((s) => [s.id, s]))
-  return doc.edges.map((edge) => {
-    const a = byId.get(edge.source)
-    const b = byId.get(edge.target)
-    const isNew = a?.status === 'new' || b?.status === 'new'
-    const status: ScreenStatus = isNew ? 'new' : 'locked'
-    return {
-      id: edge.id,
-      source: edge.source,
-      target: edge.target,
-      type: 'smoothstep',
-      animated: isNew,
-      className: `flow-edge status-${status}`,
-      markerEnd: { type: MarkerType.ArrowClosed, width: 16, height: 16 },
-    }
-  })
+  // Every edge looks identical: solid line, same color/width, same arrowhead —
+  // no animated/dashed edges and no per-status coloring.
+  return doc.edges.map((edge) => ({
+    id: edge.id,
+    source: edge.source,
+    target: edge.target,
+    type: 'smoothstep',
+    // Generous corner radius → the rounded S-jog look on branches.
+    pathOptions: { borderRadius: 28 },
+    animated: false,
+    className: 'flow-edge',
+    markerEnd: { type: MarkerType.ArrowClosed, width: 11, height: 11 },
+  }))
 }
 
 // -------- Tree projection (doc → hierarchical tree) -----------------
 
-export type TreeKind = 'flow' | 'screen' | 'state' | 'group'
+export type TreeKind = 'flow' | 'screen' | 'state' | 'group' | 'link'
 
 export interface TreeNode {
   id: string
   label: string
   kind: TreeKind
+  screenId?: string
   status?: ScreenStatus
   meta?: string
   children: TreeNode[]
@@ -55,9 +61,24 @@ function buildScreenNode(doc: ProjectDoc, screen: Screen): TreeNode {
     id: st.id,
     label: st.name,
     kind: 'state',
+    screenId: screen.id,
     status: st.status,
     children: [],
   }))
+  const byId = new Map(doc.screens.map((s) => [s.id, s]))
+  const links: TreeNode[] = doc.edges
+    .filter((edge) => edge.source === screen.id)
+    .map((edge) => {
+      const target = byId.get(edge.target)
+      return {
+        id: `link:${edge.id}`,
+        label: target ? target.name : edge.target,
+        kind: 'link' as const,
+        screenId: edge.target,
+        status: target?.status,
+        children: [],
+      }
+    })
   // Sub-flows launched by this screen nest directly beneath it.
   const subFlows = doc.flows
     .filter((f) => f.startsFromScreenId === screen.id)
@@ -66,9 +87,10 @@ function buildScreenNode(doc: ProjectDoc, screen: Screen): TreeNode {
     id: screen.id,
     label: screen.name,
     kind: 'screen',
+    screenId: screen.id,
     status: screen.status,
     meta: screen.meta,
-    children: [...states, ...subFlows],
+    children: [...states, ...links, ...subFlows],
   }
 }
 
@@ -95,7 +117,10 @@ function buildFlowNode(doc: ProjectDoc, flowOrId: Flow | string): TreeNode {
 }
 
 export function docToTree(doc: ProjectDoc): TreeNode {
-  const topFlows = doc.flows.filter((f) => !f.parentFlowId)
+  // A flow is top-level only if it nests under neither a parent flow nor a
+  // launching screen. (A screen-launched flow shows under that screen — see
+  // buildScreenNode — so it must not also surface at the root.)
+  const topFlows = doc.flows.filter((f) => !f.parentFlowId && !f.startsFromScreenId)
 
   // Screens not referenced by any flow (e.g. removed/detached) get an
   // "Unassigned" group so they stay visible and editable.

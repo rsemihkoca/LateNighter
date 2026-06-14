@@ -1,7 +1,7 @@
 // Tiny IndexedDB key-value helper, used to persist the chosen
 // FileSystemDirectoryHandle across sessions (handles are structured-cloneable).
 
-const DB_NAME = 'nightworker'
+const DB_NAME = 'latenighter'
 const STORE = 'kv'
 
 function openDb(): Promise<IDBDatabase> {

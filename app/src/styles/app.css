@@ -1,7 +1,7 @@
 /* ============================================================
    App shell + chrome + Screens panel
    Plus a bridge mapping Dockview's --dv-* variables onto the
-   NightWorker/Open Design token palette so dock chrome and
+   LateNighter/Open Design token palette so dock chrome and
    panels share one look. Imported AFTER dockview.css so these
    overrides win (equal specificity, later source order).
    ============================================================ */
@@ -9,7 +9,7 @@
 /* -------- App shell ------------------------------------------------- */
 .app-shell {
   display: grid;
-  grid-template-rows: 44px 1fr;
+  grid-template-rows: 34px 1fr;
   height: 100vh;
   width: 100vw;
   background: var(--bg-app);
@@ -17,39 +17,72 @@
   font-family: var(--sans);
   overflow: hidden;
 }
+.window-drag-strip {
+  display: none;
+}
+.picker-shell[data-tauri-window="true"] .window-drag-strip {
+  display: block;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 38px;
+  z-index: 1;
+}
 .app-shell__body {
   position: relative;
   min-height: 0;
   min-width: 0;
+}
+/* Native-app feel: disable web-style text selection everywhere (left nav,
+   canvas, chrome…). Editable fields keep selection so typing still works. */
+.app-shell,
+.picker-shell {
+  -webkit-user-select: none;
+  user-select: none;
+}
+.app-shell input,
+.app-shell textarea,
+.app-shell [contenteditable="true"],
+.picker-shell input,
+.picker-shell textarea,
+.picker-shell [contenteditable="true"] {
+  -webkit-user-select: text;
+  user-select: text;
 }
 
 /* -------- Chrome bar ------------------------------------------------ */
 .chrome {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  height: 44px;
-  padding: 0 12px;
+  height: 34px;
+  gap: 10px;
+  padding: 0 8px;
   border-bottom: 1px solid var(--border);
   background: color-mix(in srgb, var(--bg-panel) 88%, var(--bg-subtle));
   user-select: none;
 }
+/* macOS Overlay titlebar: trafik ışıklarının altına girmesin, rahat boşluk. */
+.app-shell[data-tauri-window="true"] .chrome {
+  padding-left: 96px;
+}
 .chrome__brand {
   display: inline-flex;
   align-items: center;
-  gap: 9px;
+  gap: 8px;
+  flex: 0 1 auto;
   min-width: 0;
 }
 .chrome__logo {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
+  width: 18px;
+  height: 18px;
   border-radius: var(--radius-sm);
   background: linear-gradient(135deg, var(--accent-tint) 0%, var(--accent-soft) 100%);
   color: var(--accent);
-  font-size: 12px;
+  font-size: 11px;
 }
 .chrome__title {
   font-size: 13px;
@@ -69,7 +102,13 @@
 .chrome__actions {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  flex: 0 0 auto;
+  gap: 5px;
+}
+.chrome__drag-spacer {
+  align-self: stretch;
+  flex: 1 1 auto;
+  min-width: 24px;
 }
 .chrome__save {
   margin-left: 4px;
@@ -85,9 +124,92 @@
 .chrome__save--saving { color: var(--blue); background: var(--blue-bg); border-color: var(--blue-border); }
 .chrome__save--dirty { color: var(--amber); background: var(--amber-bg); border-color: var(--amber-border); }
 .chrome__save--error { color: var(--red); background: var(--red-bg); border-color: var(--red-border); }
+/* -------- Device picker (custom dropdown) -------------------------- */
+.device-picker {
+  position: relative;
+}
+.device-picker__trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 24px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+}
+.device-picker__trigger:hover {
+  background: var(--bg-subtle);
+  border-color: var(--border-strong);
+}
+.device-picker__caret {
+  font-size: 9px;
+  color: var(--text-muted);
+}
+/* The inch chip — always on the far left of the trigger and every row. */
+.device-picker__inch {
+  flex: 0 0 auto;
+  min-width: 30px;
+  padding: 1px 5px;
+  border-radius: var(--radius-pill);
+  background: var(--bg-muted);
+  color: var(--text-muted);
+  font-size: 10.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+.device-picker__name {
+  white-space: nowrap;
+}
+.device-picker__menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 50;
+  min-width: 100%;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-panel);
+  box-shadow: var(--shadow-md);
+}
+.device-picker__option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 5px 8px 5px 5px;
+  border: none;
+  border-radius: calc(var(--radius) - 2px);
+  background: transparent;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 500;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.device-picker__option:hover {
+  background: var(--bg-subtle);
+}
+.device-picker__option.is-active {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+.device-picker__option.is-active .device-picker__inch {
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  color: var(--accent);
+}
 .chrome__btn {
-  height: 28px;
-  padding: 0 12px;
+  height: 24px;
+  padding: 0 10px;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--bg);
@@ -129,7 +251,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 14px 8px;
+  padding: 6px 10px 4px;
 }
 .screens__heading {
   margin: 0;
@@ -148,10 +270,10 @@
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
-  padding: 4px 8px 12px;
+  padding: 2px 6px 8px;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 1px;
   scrollbar-width: thin;
 }
 .screen-item {
@@ -160,7 +282,7 @@
   align-items: center;
   gap: 10px;
   width: 100%;
-  padding: 8px 10px;
+  padding: 5px 8px;
   border: 1px solid transparent;
   border-radius: var(--radius);
   background: transparent;
@@ -210,7 +332,7 @@
   font-weight: 600;
   border: 1px solid;
 }
-/* Status colors — GitHub-diff semantics from the NightWorker spec. */
+/* Status colors — GitHub-diff semantics from the LateNighter spec. */
 .status-locked  .screen-item__dot { background: var(--text-soft); }
 .status-new     .screen-item__dot { background: var(--green); }
 .status-deleted .screen-item__dot { background: var(--red); }
@@ -230,8 +352,8 @@
   flex: 0 0 auto;
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
-  padding: 10px 14px;
+  gap: 8px;
+  padding: 6px 10px;
   border-top: 1px solid var(--border-soft);
 }
 .legend-item {
@@ -252,6 +374,58 @@
   position: absolute;
   inset: 0;
 }
+.flow-tool-rail {
+  position: absolute;
+  left: 18px;
+  top: 50%;
+  z-index: 8;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 7px;
+  border: 1px solid color-mix(in srgb, var(--border) 86%, transparent);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--bg-panel) 88%, transparent);
+  box-shadow: var(--shadow-md);
+  backdrop-filter: blur(16px);
+  transform: translateY(-50%);
+  animation: flow-tool-rail-enter 220ms var(--ease-out) both;
+  will-change: transform, opacity;
+}
+.flow-tool-rail__btn {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: transform 140ms ease, background 140ms ease, border-color 140ms ease,
+    color 140ms ease;
+}
+.flow-tool-rail__btn:hover {
+  background: var(--bg-subtle);
+  border-color: var(--border);
+  color: var(--text-strong);
+  transform: translateX(2px);
+}
+.flow-tool-rail__btn:active {
+  transform: translateX(2px) scale(0.96);
+}
+@keyframes flow-tool-rail-enter {
+  from {
+    opacity: 0;
+    transform: translateY(calc(-50% + 8px)) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(-50%) scale(1);
+  }
+}
 .flow-panel .react-flow {
   --xy-background-pattern-color: var(--border-strong);
   --xy-edge-stroke-default: var(--border-strong);
@@ -259,6 +433,11 @@
   --xy-connectionline-stroke-default: var(--accent);
   --xy-attribution-background-color: transparent;
   background: var(--bg-app);
+}
+/* Dark mode: edges are barely visible against the dark canvas with the
+   muted --border-strong, so lift them to a lighter neutral. */
+[data-theme="dark"] .flow-panel .react-flow {
+  --xy-edge-stroke-default: var(--text-muted);
 }
 
 /* Controls + minimap chrome themed to the OD palette. */
@@ -268,8 +447,8 @@
   overflow: hidden;
 }
 .flow-panel .react-flow__controls-button {
-  width: 26px;
-  height: 26px;
+  width: 22px;
+  height: 22px;
   border-bottom: 1px solid var(--border);
   background: var(--bg-panel);
   color: var(--text-muted);
@@ -279,22 +458,29 @@
   background: var(--bg-subtle);
   color: var(--text-strong);
 }
-.flow-panel .react-flow__minimap {
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--bg-panel);
-  overflow: hidden;
+/* Edges — uniform solid lines, thicker stroke. */
+.flow-edge .react-flow__edge-path {
+  stroke-width: 6;
 }
-.flow-panel .react-flow__minimap-mask {
-  fill: color-mix(in srgb, var(--bg-app) 64%, transparent);
+/* Arrowheads default to a hardcoded light gray (#b1b1b7) applied as an inline
+   style on the marker polyline; !important is required to beat that inline
+   style so they follow the themed edge stroke (lighter in dark mode). */
+.flow-panel .react-flow__arrowhead .arrowclosed,
+.flow-panel .react-flow__arrowhead .arrow {
+  fill: var(--xy-edge-stroke-default) !important;
+  stroke: var(--xy-edge-stroke-default) !important;
 }
 
-/* Edge diff colors. */
-.flow-edge .react-flow__edge-path {
-  stroke-width: 1.5;
+/* Lane guides — rows of round dots screens sit on (git-graph look). Geometry
+   lives in LaneGuides.tsx (rendered in flow space via ViewportPortal); this
+   rule only supplies the dot color (the gradient uses currentColor). */
+.lane-guides__line {
+  color: var(--text-soft);
 }
-.flow-edge.status-new .react-flow__edge-path {
-  stroke: var(--green);
+/* --border-strong is nearly invisible on the dark canvas; lift the dots to a
+   mid neutral so they stay clearly readable as lane rows. */
+[data-theme="dark"] .lane-guides__line {
+  color: var(--text-muted);
 }
 
 /* Handles. */
@@ -308,51 +494,98 @@
   border-color: var(--accent);
 }
 
-/* -------- Screen node (card) --------------------------------------- */
-.screen-node {
+/* -------- Screen node (phone mockup) ------------------------------- */
+/* The node is a phone frame (SVG chrome) with the screen name labeled
+   beneath it. Width/height are set inline from deviceMetrics() so the
+   auto-layout lane guides land on the frame center. */
+.device-node {
   position: relative;
-  display: grid;
-  grid-template-columns: 4px minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 10px;
-  width: 208px;
-  padding: 10px 12px 10px 0;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: var(--bg-panel);
-  box-shadow: var(--shadow-sm);
-  color: var(--text);
-  font-family: var(--sans);
-  transition: border-color var(--dur-quick) var(--ease-out),
-    box-shadow var(--dur-quick) var(--ease-out);
-}
-.screen-node:hover {
-  border-color: var(--border-strong);
-  box-shadow: var(--shadow-md);
-}
-.screen-node.is-selected {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
-}
-.screen-node__rail {
-  width: 4px;
-  align-self: stretch;
-  border-radius: var(--radius-md) 0 0 var(--radius-md);
-  background: var(--text-soft);
-}
-.screen-node__body {
-  min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 2px;
-}
-.screen-node__top {
-  display: flex;
   align-items: center;
-  gap: 7px;
-  min-width: 0;
+  box-sizing: border-box;
+  color: var(--text);
+  font-family: var(--sans);
 }
-.screen-node__name {
+.device-frame {
+  position: relative;
+  line-height: 0;
+  border-radius: 14%/6.7%; /* clip the selection ring to the body corners */
+  filter: drop-shadow(0 6px 16px color-mix(in srgb, var(--text) 22%, transparent));
+  transition: filter var(--dur-quick) var(--ease-out);
+}
+.device-node:hover .device-frame {
+  filter: drop-shadow(0 8px 22px color-mix(in srgb, var(--text) 30%, transparent));
+}
+.device-frame__svg {
+  display: block;
+  /* status-bar ink (clock + battery + wifi) — dark on the light screen */
+  color: #0b0b0c;
+}
+.device-frame__screen {
+  fill: #f4f5f7;
+}
+.device-frame__clock {
+  fill: #0b0b0c;
+  font-family: var(--sans);
+}
+.device-frame__slot {
+  position: absolute;
+  overflow: hidden;
+  /* empty for now — future screen UI mounts here */
+}
+
+/* -------- DeviceMockup (photoreal SVG frame, used as-is) ---------------- */
+.device-mockup {
+  position: relative;
+  display: block;
+  user-select: none;
+}
+.device-mockup__frame {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 0;
+  pointer-events: none;
+}
+.device-mockup__screen {
+  position: absolute;
+  z-index: 1;
+  overflow: hidden;
+  background: #fff;
+  line-height: normal;
+}
+/* "Mockup yok" — a plain blank screen instead of a phone frame. */
+.device-mockup__blank {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg-subtle);
+  border: 1px dashed var(--border-strong);
+  box-sizing: border-box;
+}
+
+/* Selection ring hugs the phone body */
+.device-node.is-selected .device-frame {
+  outline: 3px solid color-mix(in srgb, var(--accent) 55%, transparent);
+  outline-offset: 2px;
+}
+
+.device-node__label {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  margin-top: 8px;
+  max-width: 100%;
+  text-align: center;
+}
+.device-node__name {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
   font-size: 13px;
   font-weight: 600;
   color: var(--text-strong);
@@ -360,32 +593,608 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.screen-node__meta {
+.device-node__meta {
   font-size: 11px;
   color: var(--text-muted);
-  padding-left: 14px;
 }
-.screen-node__badge {
-  margin-right: 0;
+.device-node__badge {
+  margin-top: 4px;
 }
 
-/* Status → rail color (dot color reuses .screen-item__dot rules). */
-.screen-node.status-locked  .screen-node__rail { background: var(--text-soft); }
-.screen-node.status-new     .screen-node__rail { background: var(--green); }
-.screen-node.status-deleted .screen-node__rail { background: var(--red); }
-.screen-node.status-changed .screen-node__rail { background: var(--amber); }
-
-.screen-node.status-deleted {
-  opacity: 0.7;
+.device-node.status-deleted .device-frame {
+  opacity: 0.6;
 }
-.screen-node.status-deleted .screen-node__name {
+.device-node.status-deleted .device-node__name {
   text-decoration: line-through;
   color: var(--text-muted);
+}
+
+/* -------- Screen card (the node) ----------------------------------- */
+/* The card is the unit edges connect to: a titled frame wrapping the phone
+   mockup. Its title bar carries the screen info (name + status); the mockup
+   is the body. Fixed to the grid-snapped node size (set inline from
+   cardMetrics) with border-box, so the lane guides hug its center. */
+.screen-card {
+  box-sizing: border-box;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-panel);
+  border-radius: var(--radius-lg);
+  /* Border drawn as an inset ring (not a layout border) so it doesn't offset
+     the content — the mockup lands exactly two grids below the card's top edge. */
+  box-shadow: var(--shadow-md), inset 0 0 0 1px var(--border);
+  color: var(--text);
+  font-family: var(--sans);
+  overflow: hidden;
+  transition: box-shadow var(--dur-quick) var(--ease-out);
+}
+.screen-card:hover {
+  box-shadow: var(--shadow-lg), inset 0 0 0 1px var(--border-strong);
+}
+.screen-card.is-selected {
+  box-shadow: 0 0 0 2px var(--accent-soft), var(--shadow-md),
+    inset 0 0 0 1.5px var(--accent);
+}
+/* Header band: fixed compact height set inline (= CARD_HEADER_H). */
+.screen-card__head {
+  flex: 0 0 auto;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1px;
+  padding: 0 3px 0 8px;
+}
+.screen-card__titlerow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+}
+.screen-card__title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.screen-card__name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-strong);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.surface-switch {
+  flex: 0 0 auto;
+  display: inline-grid;
+  grid-template-columns: 27px 20px;
+  gap: 1px;
+  height: 14px;
+  padding: 1px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-muted);
+}
+.surface-switch__btn {
+  min-width: 0;
+  padding: 0 1px;
+  border: 0;
+  border-radius: calc(var(--radius-sm) - 2px);
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 6.5px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 140ms ease, color 140ms ease, transform 140ms ease;
+}
+.surface-switch__btn:hover {
+  color: var(--text-strong);
+}
+.surface-switch__btn:active {
+  transform: scale(0.96);
+}
+.surface-switch__btn.is-active {
+  background: var(--bg-panel);
+  color: var(--text-strong);
+  box-shadow: var(--shadow-xs);
+}
+.surface-live .surface-switch__btn.is-active {
+  background: var(--accent);
+  color: #fff;
+}
+/* Body holds the mockup, top-aligned (flush under the header) and centered
+   horizontally. No padding — the grid-snap in cardMetrics is the only spacing,
+   so the card hugs the mockup. */
+.screen-card__body {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  min-height: 0;
+}
+.screen-card.status-deleted {
+  opacity: 0.7;
+}
+.screen-card.status-deleted .screen-card__name {
+  text-decoration: line-through;
+  color: var(--text-muted);
+}
+.live-placeholder {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  min-height: 100%;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: transparent;
+  color: #6b7280;
+  font-family: var(--sans);
+  cursor: pointer;
+}
+.live-placeholder__label {
+  padding: 5px 10px;
+  border: 1px solid #d8dde7;
+  border-radius: var(--radius-pill);
+  background: rgba(255, 255, 255, 0.86);
+  box-shadow: 0 4px 14px rgba(17, 24, 39, 0.08);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+.live-frame {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: #fff;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .flow-tool-rail,
+  .flow-tool-rail__btn,
+  .surface-switch__btn {
+    animation: none;
+    transition: none;
+  }
+}
+
+/* -------- Sidebar: activity bar + views (VS Code / Cursor style) ----- */
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+  min-width: 0;
+  background: var(--bg-panel);
+}
+/* Top bar: a horizontal row of view icons above the panel (VS Code top layout). */
+.activity-bar {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  width: 100%;
+  height: 38px;
+  padding: 0 8px;
+  background: color-mix(in srgb, var(--bg-panel) 90%, var(--bg-subtle));
+  border-bottom: 1px solid var(--border);
+}
+.activity-bar__btn {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border: none;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text-soft);
+  cursor: pointer;
+  transition: color var(--dur-quick) var(--ease-out),
+    background var(--dur-quick) var(--ease-out);
+}
+.activity-bar__btn:hover {
+  color: var(--text-strong);
+  background: var(--bg-fill-tertiary);
+}
+.activity-bar__btn.is-active {
+  color: var(--text-strong);
+  background: var(--bg-fill-secondary);
+}
+/* VS Code-style accent rail on the active view, under the icon (top bar). */
+.activity-bar__btn.is-active::before {
+  content: '';
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  bottom: -3px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--accent);
+}
+.activity-bar__badge {
+  position: absolute;
+  right: -2px;
+  top: -2px;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 3px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+  color: #fff;
+  font-size: 9px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+.sidebar__view {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+}
+
+/* Shared chrome for the Search / Source Control views. */
+.side-panel {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+  background: var(--bg-panel);
+  color: var(--text);
+  font-family: var(--sans);
+}
+.side-panel__head {
+  flex: 0 0 auto;
+  padding: 10px 12px 6px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+/* -------- Search view ---------------------------------------------- */
+.search-box {
+  flex: 0 0 auto;
+  position: relative;
+  display: flex;
+  align-items: center;
+  margin: 0 10px 6px;
+}
+.search-box__icon {
+  position: absolute;
+  left: 8px;
+  color: var(--text-soft);
+  pointer-events: none;
+}
+.search-box__input {
+  width: 100%;
+  height: 28px;
+  padding: 0 26px 0 28px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-subtle);
+  color: var(--text-strong);
+  font-size: 12.5px;
+  font-family: inherit;
+  outline: none;
+}
+.search-box__input:focus {
+  border-color: var(--accent);
+  background: var(--bg-panel);
+}
+.search-box__input::placeholder {
+  color: var(--text-faint);
+}
+.search-box__clear {
+  position: absolute;
+  right: 5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.search-box__clear:hover {
+  background: var(--bg-fill);
+  color: var(--text-strong);
+}
+.search-results {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 2px 6px 10px;
+  scrollbar-width: thin;
+}
+.search-empty {
+  margin: 8px 6px;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--text-faint);
+}
+.search-results__count {
+  padding: 4px 6px 6px;
+  font-size: 10.5px;
+  color: var(--text-faint);
+}
+.search-result {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 5px 8px;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+}
+.search-result:hover {
+  background: color-mix(in srgb, var(--text-strong) 7%, transparent);
+}
+.search-result.is-active {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 28%, var(--border));
+}
+.search-result:disabled {
+  cursor: default;
+}
+.search-result__icon {
+  flex: 0 0 auto;
+  display: inline-flex;
+  width: 16px;
+  justify-content: center;
+}
+.search-result__label {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.search-result__hit {
+  background: color-mix(in srgb, var(--accent) 26%, transparent);
+  color: inherit;
+  border-radius: 2px;
+}
+.search-result__rel {
+  flex: 0 0 auto;
+  color: var(--text-faint);
+}
+.search-result__context {
+  flex: 0 1 auto;
+  min-width: 0;
+  margin-left: auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10.5px;
+  color: var(--text-faint);
+}
+.search-result__dot {
+  flex: 0 0 auto;
+  width: 6px;
+  height: 6px;
+}
+
+/* -------- Source Control view -------------------------------------- */
+.commit-box {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 0 10px 8px;
+  border-bottom: 1px solid var(--border-soft);
+}
+.commit-box__msg {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 7px 9px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-subtle);
+  color: var(--text-strong);
+  font-size: 12.5px;
+  font-family: inherit;
+  line-height: 1.4;
+  resize: vertical;
+  outline: none;
+}
+.commit-box__msg:focus {
+  border-color: var(--accent);
+  background: var(--bg-panel);
+}
+.commit-box__msg::placeholder {
+  color: var(--text-faint);
+}
+.commit-box__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 28px;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  background: var(--accent);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background var(--dur-quick) var(--ease-out);
+}
+.commit-box__btn:hover:not(:disabled) {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+}
+.commit-box__btn:disabled {
+  background: var(--bg-muted);
+  border-color: var(--border);
+  color: var(--text-faint);
+  cursor: default;
+}
+.sc-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+.changes {
+  padding: 4px 6px 6px;
+}
+.changes__group {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 6px 4px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.changes__group--log {
+  margin-top: 4px;
+  border-top: 1px solid var(--border-soft);
+}
+.changes__empty {
+  margin: 6px;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--text-faint);
+}
+.change-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 5px 8px;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+}
+.change-row:hover {
+  background: color-mix(in srgb, var(--text-strong) 7%, transparent);
+}
+.change-row.is-active {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 28%, var(--border));
+}
+.change-row__name {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.change-row.status-deleted .change-row__name {
+  text-decoration: line-through;
+  color: var(--text-muted);
+}
+.change-row__meta {
+  flex: 0 1 auto;
+  min-width: 0;
+  margin-left: auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10.5px;
+  color: var(--text-faint);
+}
+.change-row__tag {
+  flex: 0 0 auto;
+  /* Auto margin pins the tag to the far right whether or not a meta is shown. */
+  margin-left: auto;
+  width: 16px;
+  text-align: center;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 700;
+}
+.change-row.status-new .change-row__tag {
+  color: var(--green);
+}
+.change-row.status-changed .change-row__tag {
+  color: var(--amber);
+}
+.change-row.status-deleted .change-row__tag {
+  color: var(--red);
+}
+.commit-log {
+  padding: 0 6px 10px;
+}
+.commit-log__row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 8px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.commit-log__icon {
+  flex: 0 0 auto;
+  color: var(--text-soft);
+}
+.commit-log__msg {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+}
+.commit-log__time {
+  flex: 0 0 auto;
+  margin-left: auto;
+  font-size: 10.5px;
+  color: var(--text-faint);
 }
 
 /* -------- Dockview bridge ------------------------------------------- */
 .dv-content-container {
   position: relative;
+}
+/* Tab başlık barını kaldır (Tree/Flow yazıları) — sabit iki panel düzeni.
+   display:none yerine sıfır yükseklik: flex tüm alanı içeriğe verir ve
+   içerideki react-flow ResizeObserver doğru ölçer (üstte boşluk kalmaz). */
+.dv-tabs-and-actions-container {
+  height: 0 !important;
+  min-height: 0;
+  border-bottom: none;
+  overflow: hidden;
+}
+/* Panelleri belli et: her gruba ince bir border — aralarında net ayırıcı. */
+.dv-groupview {
+  border: 1px solid var(--border);
+  box-sizing: border-box;
 }
 .dockview-theme-light,
 .dockview-theme-dark {
@@ -419,78 +1228,152 @@
   --dv-border-radius: var(--radius);
 }
 
-/* -------- Tree navigator (left) ------------------------------------ */
+/* -------- Tree navigator (left) — Cursor/VSCode explorer look ------- */
 .tree {
   display: flex;
   flex-direction: column;
+  min-width: 0;
   height: 100%;
   background: var(--bg-panel);
   color: var(--text);
   font-family: var(--sans);
+  --tree-guide: color-mix(in srgb, var(--text-muted) 22%, transparent);
+  /* Cursor's "active" indent guide — the lit line connecting the selected
+     row to its parent across the sibling group. */
+  --tree-guide-active: color-mix(in srgb, var(--accent) 70%, var(--text-muted));
+  --tree-hover-bg: color-mix(in srgb, var(--text-strong) 7%, var(--bg-panel));
+  --tree-selected-bg: color-mix(in srgb, var(--selected) 48%, var(--bg-panel));
+  --tree-selected-border: color-mix(in srgb, var(--selected) 80%, transparent);
+  --tree-row-pad-left: 4px;
+  /* Space reserved left of the icon for the disclosure caret. The caret floats
+     in this gutter so the icon column is the single, uniform indent anchor.
+     Kept tight (and the caret small) so a folder's caret barely pokes left of
+     its icon — otherwise leaf children, which have no caret, read as if they
+     were indented an extra level relative to their folder parent. */
+  --tree-caret-gutter: 18px;
 }
-.tree__header {
-  display: flex;
+.tree__section {
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr);
   align-items: center;
-  justify-content: space-between;
-  padding: 12px 14px 8px;
+  gap: 4px;
+  height: 28px;
+  padding: 0 8px 0 8px;
+  border-bottom: 1px solid var(--border-soft);
+  background: color-mix(in srgb, var(--bg-panel) 88%, var(--bg-subtle));
 }
-.tree__heading {
-  margin: 0;
+.tree__section-caret {
+  color: var(--text-soft);
+  font-size: 10px;
+  text-align: center;
+}
+.tree__project {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 11px;
-  font-weight: 650;
-  letter-spacing: 0.06em;
+  font-weight: 680;
+  letter-spacing: 0.05em;
   text-transform: uppercase;
-  color: var(--text-muted);
+  color: var(--text-strong);
 }
-.tree__count {
-  font-size: 11px;
-  color: var(--text-faint);
-  font-variant-numeric: tabular-nums;
-}
-.tree__body {
+/* Holds the scroll body + the pinned sticky-scroll overlay. */
+.tree__viewport {
+  position: relative;
   flex: 1 1 auto;
   min-height: 0;
+}
+.tree__body {
+  height: 100%;
   overflow-y: auto;
-  padding: 4px 8px 12px;
+  padding: 2px 0 8px;
   scrollbar-width: thin;
 }
 .tree-row {
-  display: flex;
+  position: relative;
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) max-content;
   align-items: center;
-  gap: 6px;
-  height: 28px;
-  padding-right: 8px;
-  border-radius: var(--radius-sm);
+  column-gap: 5px;
+  height: 23px;
+  padding: 0 8px 0
+    calc(var(--tree-row-pad-left) + var(--tree-caret-gutter) + var(--tree-offset, 0px));
   cursor: default;
   user-select: none;
 }
+.tree-row__guide {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: var(--tree-guide-x);
+  z-index: 0;
+  width: 1px;
+  background: var(--tree-guide);
+  pointer-events: none;
+}
+.tree-row__guide.is-active {
+  background: var(--tree-guide-active);
+}
+.tree-row > :not(.tree-row__guide):not(.tree-row__caret) {
+  position: relative;
+  z-index: 1;
+}
 .tree-row:hover {
-  background: var(--bg-subtle);
+  background: var(--tree-hover-bg);
+}
+.tree-row.is-selected {
+  background: var(--tree-selected-bg);
+  box-shadow: inset 0 1px 0 var(--tree-selected-border),
+    inset 0 -1px 0 var(--tree-selected-border);
 }
 .tree-row__caret {
-  width: 12px;
-  flex: 0 0 auto;
-  font-size: 9px;
+  /* Floats in the indent gutter, just left of the icon column, so it never
+     pushes the icon — every row (folder or leaf) shares one icon column. */
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(
+    var(--tree-row-pad-left) + var(--tree-caret-gutter) + var(--tree-offset, 0px) - 11px
+  );
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 10px;
   color: var(--text-faint);
-  text-align: center;
+}
+.tree-row__caret svg {
+  width: 10px;
+  height: 10px;
   transition: transform var(--dur-quick) var(--ease-out);
+  transform: rotate(0deg);
 }
 .tree-row__caret.is-open {
+  color: var(--text-muted);
+}
+.tree-row__caret.is-open svg {
   transform: rotate(90deg);
 }
 .tree-row__caret.is-leaf {
   visibility: hidden;
 }
 .tree-row__icon {
-  width: 14px;
-  flex: 0 0 auto;
-  font-size: 11px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
   color: var(--text-soft);
-  text-align: center;
 }
-.tree-row__dot {
-  flex: 0 0 auto;
+.tree-row__icon svg {
+  width: 15px;
+  height: 15px;
 }
+.tree-row.kind-flow   .tree-row__icon { color: var(--accent); }
+.tree-row.kind-screen .tree-row__icon { color: var(--blue); }
+.tree-row.kind-state  .tree-row__icon { color: var(--text-soft); }
+.tree-row.kind-group  .tree-row__icon { color: var(--amber); }
+.tree-row.kind-link   .tree-row__icon { color: var(--purple); }
 .tree-row__label {
   min-width: 0;
   flex: 1 1 auto;
@@ -501,23 +1384,135 @@
   color: var(--text);
 }
 .tree-row.kind-flow > .tree-row__label {
-  font-weight: 650;
+  font-weight: 640;
   color: var(--text-strong);
 }
 .tree-row.kind-group > .tree-row__label {
-  font-weight: 600;
+  font-weight: 560;
   color: var(--text-muted);
 }
-.tree-row.kind-state > .tree-row__label {
+.tree-row.kind-state > .tree-row__label,
+.tree-row.kind-link > .tree-row__label {
   font-size: 11.5px;
   color: var(--text-muted);
 }
+/* Status → label color (Cursor git-modified style). Wins over kind rules. */
+.tree-row.status-new > .tree-row__label     { color: var(--green); }
+.tree-row.status-changed > .tree-row__label { color: var(--amber); }
 .tree-row.status-deleted > .tree-row__label {
+  color: var(--red);
   text-decoration: line-through;
-  color: var(--text-muted);
 }
-.tree-row__badge {
-  flex: 0 0 auto;
+.tree-row.is-selected > .tree-row__caret,
+.tree-row.is-selected > .tree-row__icon,
+.tree-row.is-selected > .tree-row__label {
+  color: #fff;
+}
+/* Right-edge status dot. */
+.tree-row__status {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+.tree-row.status-locked  .tree-row__status { background: var(--text-faint); }
+.tree-row.status-new     .tree-row__status { background: var(--green); }
+.tree-row.status-changed .tree-row__status { background: var(--amber); }
+.tree-row.status-deleted .tree-row__status { background: var(--red); }
+
+/* -------- Explorer toolbar + row actions --------------------------- */
+.tree__toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  height: 30px;
+  padding: 0 8px;
+  border-bottom: 1px solid var(--border-soft);
+  background: color-mix(in srgb, var(--bg-panel) 88%, var(--bg-subtle));
+}
+.tree__toolbar-title {
+  font-size: 11px;
+  font-weight: 680;
+  letter-spacing: 0.06em;
+  color: var(--text-strong);
+}
+.tree__toolbar-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  height: 20px;
+  padding: 0 7px 0 5px;
+  border: 1px solid var(--border-soft);
+  border-radius: 5px;
+  background: var(--bg-panel);
+  color: var(--text-muted);
+  font-size: 11px;
+  font-family: var(--sans);
+  cursor: pointer;
+}
+.tree__toolbar-btn:hover {
+  color: var(--text-strong);
+  border-color: var(--text-faint);
+}
+/* Row actions overlay on the right; revealed on hover/selection so the row
+   stays clean at rest. */
+.tree-row__actions {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 6px;
+  z-index: 2;
+  display: none;
+  align-items: center;
+  gap: 1px;
+  padding-left: 10px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--tree-hover-bg) 28%,
+    var(--tree-hover-bg)
+  );
+}
+.tree-row:hover .tree-row__actions,
+.tree-row.is-selected .tree-row__actions {
+  display: inline-flex;
+}
+.tree-row.is-selected .tree-row__actions {
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--tree-selected-bg) 28%,
+    var(--tree-selected-bg)
+  );
+}
+.tree-row__action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.tree-row__action:hover {
+  background: color-mix(in srgb, var(--text-strong) 12%, transparent);
+  color: var(--text-strong);
+}
+.tree-row.is-selected .tree-row__action {
+  color: color-mix(in srgb, #fff 78%, transparent);
+}
+.tree-row.is-selected .tree-row__action:hover {
+  background: color-mix(in srgb, #fff 18%, transparent);
+  color: #fff;
+}
+.tree-row__action-tag {
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
 }
 
 /* -------- Project picker ------------------------------------------- */
