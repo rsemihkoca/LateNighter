@@ -21,7 +21,7 @@ import {
   Unlink,
   type LucideIcon,
 } from 'lucide-react'
-import { useDoc } from '../doc/DocContext'
+import { useDoc } from '../doc/DocContextCore'
 import { docToTree, type TreeKind, type TreeNode } from '../doc/derive'
 
 /* ─────────────────────────────────────────────────────────────
@@ -148,7 +148,6 @@ export function TreeNavigator() {
     moveFlow,
     connectScreens,
     removeEdges,
-    syncKey,
   } = useDoc()
 
   const treeModel = useMemo(() => docToTree(doc), [doc])
@@ -159,24 +158,13 @@ export function TreeNavigator() {
     () => new Set([ROOT, ...(kids.get(ROOT) ?? []).filter((id) => (kids.get(id)?.length ?? 0) > 0)]),
     [ROOT, kids],
   )
-  const [expanded, setExpanded] = useState<Set<string>>(initialExpanded)
+  const [expanded, setExpanded] = useState<Set<string>>(() => initialExpanded)
   const [focused, setFocused] = useState<string | null>(null)
   const [renaming, setRenaming] = useState<string | null>(null)
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const rowEls = useRef<Record<string, HTMLDivElement | null>>({})
 
   const nameOf = useCallback((id: string) => meta.get(id)?.name ?? '', [meta])
-
-  // Re-seed expansion when the doc is structurally rebuilt externally so newly
-  // added folders default to a sensible open state.
-  useEffect(() => {
-    setExpanded((prev) => {
-      const next = new Set(prev)
-      next.add(ROOT)
-      return next
-    })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [syncKey])
 
   const toggle = useCallback((id: string) => {
     setExpanded((s) => {
@@ -205,19 +193,23 @@ export function TreeNavigator() {
   // (e.g. clicking a node on the canvas) and default it to the first row.
   useEffect(() => {
     if (selectedScreenId) {
-      // If the focused row already represents this screen (its own node, or a
-      // link/state row pointing at it — e.g. the user just clicked a link),
-      // leave focus put. Otherwise (external canvas selection) move to it.
-      const focusedMeta = focused ? meta.get(focused) : undefined
-      const alreadyOnScreen =
-        focused === selectedScreenId || focusedMeta?.screenId === selectedScreenId
-      if (alreadyOnScreen) return
       const match =
         visible.find((v) => v.id === selectedScreenId) ??
         visible.find((v) => meta.get(v.id)?.screenId === selectedScreenId)
-      if (match && match.id !== focused) setFocused(match.id)
+      if (!match) return
+      queueMicrotask(() => {
+        setFocused((current) => {
+          const currentMeta = current ? meta.get(current) : undefined
+          const alreadyOnScreen =
+            current === selectedScreenId || currentMeta?.screenId === selectedScreenId
+          return alreadyOnScreen ? current : match.id
+        })
+      })
     } else if (focused === null && visible.length) {
-      setFocused(visible[0].id)
+      const firstId = visible[0].id
+      queueMicrotask(() => {
+        setFocused((current) => current ?? firstId)
+      })
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedScreenId, visible])
@@ -232,10 +224,9 @@ export function TreeNavigator() {
   const fLevel = fEntry ? fEntry.level : -1
   const fAncestor = fEntry && fLevel > 0 ? fEntry.parents[fLevel - 1] : null
 
-  const activate = useCallback(
+  const activateRow = useCallback(
     (id: string) => {
       setFocused(id)
-      scrollRef.current?.focus()
       const m = meta.get(id)
       if (m?.screenId) selectScreen(m.screenId)
       if (m?.isDir) toggle(id)
@@ -253,7 +244,6 @@ export function TreeNavigator() {
         else if (m.kind === 'state') renameState(id, v)
       }
       setRenaming(null)
-      scrollRef.current?.focus()
     },
     [meta, renameScreen, renameFlow, renameState],
   )
@@ -319,7 +309,10 @@ export function TreeNavigator() {
       else if (cur.level > 0) setFocused(cur.parents[cur.level - 1])
     } else if (e.key === 'Enter') {
       consume()
-      if (cur) activate(cur.id)
+      if (cur) {
+        activateRow(cur.id)
+        scrollRef.current?.focus()
+      }
     } else if (e.key === 'Delete' || e.key === 'Backspace') {
       consume()
       if (focused) removeNode(focused)
@@ -698,7 +691,10 @@ export function TreeNavigator() {
                         ? T.selActive
                         : undefined,
                   }}
-                  onClick={() => activate(id)}
+                  onClick={() => {
+                    activateRow(id)
+                    scrollRef.current?.focus()
+                  }}
                   onDoubleClick={(event) => startRename(id, event)}
                 >
                   {lineHere && (
@@ -761,13 +757,18 @@ export function TreeNavigator() {
                       onClick={(e) => e.stopPropagation()}
                       onKeyDown={(e) => {
                         e.stopPropagation()
-                        if (e.key === 'Enter') commitRename(id, e.currentTarget.value)
-                        else if (e.key === 'Escape') {
+                        if (e.key === 'Enter') {
+                          commitRename(id, e.currentTarget.value)
+                          scrollRef.current?.focus()
+                        } else if (e.key === 'Escape') {
                           setRenaming(null)
                           scrollRef.current?.focus()
                         }
                       }}
-                      onBlur={(e) => commitRename(id, e.currentTarget.value)}
+                      onBlur={(e) => {
+                        commitRename(id, e.currentTarget.value)
+                        scrollRef.current?.focus()
+                      }}
                       style={{
                         flex: 1,
                         minWidth: 0,

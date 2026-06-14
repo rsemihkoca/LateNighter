@@ -1,5 +1,6 @@
 import {
   base64ToBytes,
+  imageUrlOf,
   inlineHtmlFolder,
   mimeOf,
   normalizePath,
@@ -23,8 +24,10 @@ import type { ScreenSurface } from '../doc/types'
 export interface SurfaceEntry {
   /** Original files (relpath → file) — written to disk as the real folder. */
   bundle: SurfaceBundle
-  /** Self-contained inlined HTML for the sandboxed render iframe. */
+  /** Self-contained inlined HTML for the sandboxed render iframe (html surfaces). */
   html: string
+  /** Data URL of the image (image surfaces — e.g. a preview.png), else undefined. */
+  image?: string
 }
 
 const store = new Map<string, SurfaceEntry>()
@@ -39,7 +42,7 @@ function bump() {
 }
 
 function makeEntry(bundle: SurfaceBundle): SurfaceEntry {
-  return { bundle, html: inlineHtmlFolder(bundle) ?? '' }
+  return { bundle, html: inlineHtmlFolder(bundle) ?? '', image: imageUrlOf(bundle) }
 }
 
 /** Set/replace a screen surface's content. */
@@ -59,6 +62,10 @@ export function getSurface(screenId: string, surface: ScreenSurface): SurfaceEnt
 
 export function getSurfaceHtml(screenId: string, surface: ScreenSurface): string | undefined {
   return store.get(keyOf(screenId, surface))?.html
+}
+
+export function getSurfaceImageUrl(screenId: string, surface: ScreenSurface): string | undefined {
+  return store.get(keyOf(screenId, surface))?.image
 }
 
 /** Replace the whole store from disk-read files (called on project load). Each

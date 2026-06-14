@@ -20,13 +20,49 @@ import {
 import '@xyflow/react/dist/style.css'
 import { Code2, Monitor } from 'lucide-react'
 import { useTheme } from '../theme/ThemeContext'
-import { useDoc } from '../doc/DocContext'
+import { useDoc } from '../doc/DocContextCore'
 import { docToEdges, docToNodes } from '../doc/derive'
 import { computeLayout, GRID_DOT_SIZE, GRID_GAP } from '../doc/layout'
 import { ScreenNode, type ScreenNodeData } from './ScreenNode'
 import { LaneGuides } from './LaneGuides'
 
 const nodeTypes: NodeTypes = { screen: ScreenNode }
+
+// Floating tool rail button (was .flow-tool-rail__btn). The enter keyframe lives
+// in app.css (residual); motion-reduce disables the hover transition.
+const FLOW_RAIL_BTN =
+  'relative grid place-items-center w-8 h-8 p-0 border border-transparent rounded-sm bg-transparent text-fg-muted cursor-pointer transition-[transform,background-color,border-color,color] duration-[140ms] hover:bg-subtle hover:border-border hover:text-fg-strong hover:translate-x-0.5 active:translate-x-0.5 active:scale-[0.96] motion-reduce:transition-none'
+
+function useInitialFitView() {
+  const { fitView } = useReactFlow()
+  const initialFitDone = useRef(false)
+
+  const scheduleInitialFit = useCallback(() => {
+    if (initialFitDone.current) return undefined
+    const raf = requestAnimationFrame(() => {
+      if (initialFitDone.current) return
+      const panel = document.querySelector('.flow-panel')
+      if (!panel?.clientWidth || !panel?.clientHeight) return
+      fitView({ padding: 0.25 })
+      initialFitDone.current = true
+    })
+    return () => cancelAnimationFrame(raf)
+  }, [fitView])
+
+  useEffect(() => {
+    const panel = document.querySelector('.flow-panel')
+    if (!panel) return
+    const observer = new ResizeObserver(() => scheduleInitialFit())
+    observer.observe(panel)
+    const cancelInitialFit = scheduleInitialFit()
+    return () => {
+      observer.disconnect()
+      cancelInitialFit?.()
+    }
+  }, [scheduleInitialFit])
+
+  return scheduleInitialFit
+}
 
 function FlowInner() {
   const { theme } = useTheme()
@@ -43,38 +79,11 @@ function FlowInner() {
   } = useDoc()
   const [nodes, setNodes, onNodesChange] = useNodesState<Node<ScreenNodeData>>([])
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([])
-  const { fitView } = useReactFlow()
-  const initialFitDone = useRef(false)
-
-  const scheduleInitialFit = useCallback(() => {
-    if (initialFitDone.current) return undefined
-    const raf = requestAnimationFrame(() => {
-      if (initialFitDone.current) return
-      const panel = document.querySelector('.flow-panel')
-      if (!panel?.clientWidth || !panel?.clientHeight) return
-      fitView({ padding: 0.25 })
-      initialFitDone.current = true
-    })
-    return () => cancelAnimationFrame(raf)
-  }, [fitView])
+  const scheduleInitialFit = useInitialFitView()
 
   // Lane center-lines for the background guides, derived from the same
   // layout engine (device-aware) that positions the nodes.
   const laneYs = useMemo(() => computeLayout(doc).laneYs, [doc])
-
-  // Fit only once when the panel first gets a real size. After that the camera
-  // belongs to the user; structural edits must not snap the viewport back.
-  useEffect(() => {
-    const panel = document.querySelector('.flow-panel')
-    if (!panel) return
-    const observer = new ResizeObserver(() => scheduleInitialFit())
-    observer.observe(panel)
-    const cancelInitialFit = scheduleInitialFit()
-    return () => {
-      observer.disconnect()
-      cancelInitialFit?.()
-    }
-  }, [scheduleInitialFit])
 
   // Reseed transient React Flow state from the doc on mount and whenever the
   // structure changes externally (file edit) or via the tree (syncKey bump).
@@ -189,9 +198,12 @@ function FlowToolRail({
   onAddLive: () => void
 }) {
   return (
-    <aside className="flow-tool-rail" aria-label="Flow tools">
+    <aside
+      className="absolute left-[18px] top-1/2 z-[8] flex flex-col gap-1.5 p-[7px] border border-[color-mix(in_srgb,var(--border)_86%,transparent)] rounded-base bg-[color-mix(in_srgb,var(--bg-panel)_88%,transparent)] shadow-[var(--shadow-md)] backdrop-blur-[16px] -translate-y-1/2 [animation:flow-tool-rail-enter_220ms_var(--ease-out)_both] will-change-[transform,opacity] motion-reduce:animate-none"
+      aria-label="Flow tools"
+    >
       <button
-        className="flow-tool-rail__btn"
+        className={FLOW_RAIL_BTN}
         type="button"
         title="Preview screen"
         onClick={onAddPreview}
@@ -199,7 +211,7 @@ function FlowToolRail({
         <Monitor size={17} strokeWidth={1.8} />
       </button>
       <button
-        className="flow-tool-rail__btn"
+        className={FLOW_RAIL_BTN}
         type="button"
         title="Live HTML screen"
         onClick={onAddLive}

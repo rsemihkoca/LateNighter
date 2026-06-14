@@ -7,8 +7,8 @@ import { TreeNavigator } from './TreeNavigator'
 
 export function Sidebar() {
   return (
-    <div className="sidebar">
-      <div className="sidebar__view">
+    <div className="flex flex-col h-full w-full min-w-0 bg-panel">
+      <div className="flex-[1_1_auto] min-h-0 flex">
         <TreeNavigator />
       </div>
     </div>

@@ -25,7 +25,7 @@ export function LaneGuides({ laneYs }: { laneYs: number[] }) {
       {laneYs.map((centerY) => (
         <div
           key={centerY}
-          className="lane-guides__line"
+          className="text-fg-soft dark:text-fg-muted"
           style={{
             position: 'absolute',
             left: STRIP_LEFT,

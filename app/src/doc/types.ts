@@ -14,8 +14,8 @@ export const SURFACE_LABEL: Record<ScreenSurface, string> = {
   live: 'Live',
 }
 
-/** What a screen surface holds. Image bytes live in `previewImage` (data URL);
-    htmlFile/htmlFolder bytes live on disk + in the surfaceStore, not in JSON. */
+/** What a screen surface holds. All surface bytes (image / htmlFile / htmlFolder)
+    live on disk (under preview/ or live/) + in the surfaceStore, NOT in JSON. */
 export type SurfaceContent = 'image' | 'htmlFile' | 'htmlFolder'
 
 export interface XY {
@@ -36,7 +36,9 @@ export interface Screen {
   meta: string
   /** Preview = blank/mock screen; Live = authored HTML surface. */
   surface?: ScreenSurface
-  /** Preview surface image, stored as a data URL (only when previewContent='image'). */
+  /** Legacy/web fallback: preview image as a data URL. Disk backends store the
+      bytes under preview/ instead and leave this undefined; backends without a
+      file tree (browser localStorage) keep it as the only persistent copy. */
   previewImage?: string
   /** What the preview surface holds. HTML/folder bytes live on disk + in the
       surfaceStore (keyed by screen id), NOT in this JSON. */

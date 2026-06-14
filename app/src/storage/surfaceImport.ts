@@ -187,20 +187,47 @@ function openFileInput(opts: { accept?: string; directory?: boolean }): Promise<
   })
 }
 
-function fileToDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => resolve(reader.result as string)
-    reader.onerror = () => reject(reader.error)
-    reader.readAsDataURL(file)
-  })
+const IMAGE_EXT: Record<string, string> = {
+  'image/png': 'png',
+  'image/jpeg': 'jpg',
+  'image/webp': 'webp',
+  'image/gif': 'gif',
+  'image/svg+xml': 'svg',
+  'image/avif': 'avif',
+  'image/bmp': 'bmp',
+  'image/x-icon': 'ico',
+}
+const imageExt = (mime: string): string => IMAGE_EXT[mime.toLowerCase()] ?? 'png'
+
+/** A one-file preview bundle keyed `preview.<ext>` (mirrors how a live folder is
+    keyed) so the image lands on disk under `preview/preview.<ext>`. */
+function previewImageBundle(bytes: Uint8Array, mime: string, b64?: string): SurfaceBundle {
+  const m = mime.toLowerCase().startsWith('image/') ? mime.toLowerCase() : 'image/png'
+  const bundle: SurfaceBundle = new Map()
+  bundle.set(`preview.${imageExt(m)}`, { mime: m, bytes, b64 })
+  return bundle
 }
 
-/** Preview surface — pick an image, return it as a data URL. */
-export async function pickPreviewImage(): Promise<string | null> {
+/** Preview surface — pick an image, return it as a one-file `preview.<ext>` bundle. */
+export async function pickPreviewImageBundle(): Promise<SurfaceBundle | null> {
   const [file] = await openFileInput({ accept: 'image/png,image/*' })
   if (!file) return null
-  return fileToDataUrl(file)
+  return previewImageBundle(new Uint8Array(await file.arrayBuffer()), file.type || 'image/png')
+}
+
+/** Decode a legacy `data:<mime>;base64,<b64>` preview into a bundle (migration). */
+export function imageDataUrlToBundle(dataUrl: string): SurfaceBundle | null {
+  const m = /^data:([^;]+);base64,(.*)$/s.exec(dataUrl)
+  if (!m) return null
+  return previewImageBundle(base64ToBytes(m[2]), m[1], m[2])
+}
+
+/** Data URL of the first image asset in a bundle (for rendering an image surface). */
+export function imageUrlOf(bundle: SurfaceBundle): string | undefined {
+  for (const asset of bundle.values()) {
+    if (asset.mime.startsWith('image/')) return dataUrlOf(asset)
+  }
+  return undefined
 }
 
 /** Strip the chosen folder's own name (web `webkitRelativePath` prefixes it) so

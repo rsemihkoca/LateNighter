@@ -1,0 +1,431 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- H28-CONCEPT: Yüz borsası potansiyel endeksi yükselişte -->
+  <title>H28 Yüz Borsası</title>
+  <style>
+    :root {
+      --ink: #15110b;
+      --paper: #fff3d7;
+      --amber: #f4ad32;
+      --green: #0f8a54;
+      --lime: #b7ef6a;
+      --brown: #4f2d17;
+      --ease: cubic-bezier(.19, 1, .22, 1);
+    }
+
+    * { box-sizing: border-box; }
+
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+    }
+
+    body {
+      display: grid;
+      place-items: center;
+      overflow: hidden;
+      background: #19130d;
+      color: var(--ink);
+      font-family: Avenir, "Trebuchet MS", Verdana, sans-serif;
+    }
+
+    .story {
+      position: relative;
+      width: min(100vw, 430px, calc(100svh * 9 / 16));
+      height: min(100svh, 764px, calc(100vw * 16 / 9));
+      min-height: 620px;
+      overflow: hidden;
+      border-radius: 28px;
+      background:
+        radial-gradient(circle at 20% 10%, rgba(183, 239, 106, .44), transparent 28%),
+        radial-gradient(circle at 90% 18%, rgba(244, 173, 50, .42), transparent 26%),
+        linear-gradient(155deg, #fff6df 0%, #f8d48a 50%, #e69734 100%);
+      box-shadow: 0 24px 80px rgba(0, 0, 0, .38);
+      isolation: isolate;
+    }
+
+    .story::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(79, 45, 23, .08) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(79, 45, 23, .08) 1px, transparent 1px);
+      background-size: 28px 28px;
+      mask-image: linear-gradient(to bottom, rgba(0,0,0,.95), rgba(0,0,0,.15));
+      z-index: -2;
+    }
+
+    .story::after {
+      content: "";
+      position: absolute;
+      inset: -40%;
+      background: linear-gradient(115deg, transparent 35%, rgba(255,255,255,.42) 48%, transparent 60%);
+      transform: translateX(-50%) rotate(8deg);
+      animation: shine 4.2s var(--ease) .8s infinite;
+      z-index: -1;
+    }
+
+    .progress {
+      position: absolute;
+      top: 16px;
+      left: 18px;
+      right: 18px;
+      height: 4px;
+      border-radius: 99px;
+      background: rgba(79, 45, 23, .18);
+      overflow: hidden;
+    }
+
+    .progress span {
+      display: block;
+      width: 100%;
+      height: 100%;
+      border-radius: inherit;
+      background: var(--ink);
+      transform-origin: left;
+      animation: load 5s linear forwards;
+    }
+
+    .wrap {
+      position: relative;
+      display: flex;
+      height: 100%;
+      flex-direction: column;
+      padding: 38px 24px 22px;
+    }
+
+    .eyebrow {
+      width: max-content;
+      max-width: 100%;
+      padding: 7px 11px;
+      border: 1px solid rgba(21,17,11,.28);
+      border-radius: 999px;
+      background: rgba(255, 255, 255, .34);
+      font-size: 11px;
+      font-weight: 900;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      animation: rise .7s var(--ease) both;
+    }
+
+    h1 {
+      max-width: 330px;
+      margin: 16px 0 8px;
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: clamp(43px, 11vw, 58px);
+      line-height: .88;
+      letter-spacing: 0;
+      animation: rise .8s var(--ease) .08s both;
+    }
+
+    .subtitle {
+      max-width: 330px;
+      margin: 0;
+      color: rgba(21, 17, 11, .74);
+      font-size: 15px;
+      line-height: 1.35;
+      animation: rise .8s var(--ease) .16s both;
+    }
+
+    .ticker {
+      display: flex;
+      gap: 10px;
+      margin: 18px -24px 0;
+      padding: 9px 0;
+      overflow: hidden;
+      border-block: 1px solid rgba(21,17,11,.18);
+      background: rgba(21,17,11,.1);
+      white-space: nowrap;
+    }
+
+    .ticker span {
+      display: inline-block;
+      min-width: max-content;
+      font-size: 12px;
+      font-weight: 900;
+      animation: ticker 8s linear infinite;
+    }
+
+    .market {
+      position: relative;
+      flex: 1;
+      margin-top: 18px;
+      min-height: 230px;
+      border: 2px solid rgba(21,17,11,.8);
+      border-radius: 18px;
+      background: rgba(255, 248, 230, .56);
+      box-shadow: inset 0 -20px 60px rgba(79,45,23,.08);
+      animation: pop .85s var(--ease) .25s both;
+    }
+
+    .chart {
+      position: absolute;
+      inset: 22px 16px 90px;
+    }
+
+    .chart svg {
+      width: 100%;
+      height: 100%;
+      overflow: visible;
+    }
+
+    .grid-line {
+      stroke: rgba(21,17,11,.15);
+      stroke-width: 1;
+    }
+
+    .market-line {
+      fill: none;
+      stroke: var(--green);
+      stroke-width: 7;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      filter: drop-shadow(0 6px 10px rgba(15,138,84,.24));
+      stroke-dasharray: 420;
+      stroke-dashoffset: 420;
+      animation: draw 1.45s var(--ease) .7s forwards;
+    }
+
+    .dot {
+      fill: var(--lime);
+      stroke: var(--ink);
+      stroke-width: 3;
+      opacity: 0;
+      transform-box: fill-box;
+      transform-origin: center;
+      animation: dotPop .42s var(--ease) forwards;
+    }
+
+    .dot.one { animation-delay: 1s; }
+    .dot.two { animation-delay: 1.35s; }
+
+    .stats {
+      position: absolute;
+      left: 15px;
+      right: 15px;
+      bottom: 16px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .stat {
+      min-height: 74px;
+      padding: 10px;
+      border-radius: 13px;
+      background: rgba(21,17,11,.9);
+      color: #fff7e2;
+      animation: rise .7s var(--ease) both;
+    }
+
+    .stat:nth-child(2) { animation-delay: .14s; }
+
+    .stat small {
+      display: block;
+      margin-bottom: 5px;
+      color: rgba(255,247,226,.68);
+      font-size: 11px;
+      font-weight: 800;
+    }
+
+    .stat strong {
+      display: inline-flex;
+      align-items: baseline;
+      gap: 4px;
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: 34px;
+      line-height: 1;
+    }
+
+    .stat em {
+      display: block;
+      margin-top: 5px;
+      color: var(--lime);
+      font-size: 11px;
+      font-style: normal;
+      font-weight: 900;
+    }
+
+    .bars {
+      display: grid;
+      gap: 11px;
+      margin-top: 15px;
+    }
+
+    .bar-row {
+      animation: rise .72s var(--ease) both;
+    }
+
+    .bar-row:nth-child(2) { animation-delay: .12s; }
+
+    .bar-label {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 6px;
+      color: rgba(21,17,11,.76);
+      font-size: 12px;
+      font-weight: 900;
+    }
+
+    .bar {
+      height: 12px;
+      overflow: hidden;
+      border: 1px solid rgba(21,17,11,.5);
+      border-radius: 999px;
+      background: rgba(255,255,255,.34);
+    }
+
+    .bar span {
+      display: block;
+      width: 0;
+      height: 100%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, var(--green), var(--lime));
+      animation: fill 1.35s var(--ease) .9s forwards;
+    }
+
+    .closing {
+      margin: 14px 2px 0;
+      color: var(--brown);
+      font-size: 14px;
+      font-weight: 800;
+      line-height: 1.35;
+      animation: rise .75s var(--ease) .42s both;
+    }
+
+    @keyframes rise {
+      from { opacity: 0; transform: translateY(18px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes pop {
+      from { opacity: 0; transform: translateY(20px) scale(.97); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+
+    @keyframes draw {
+      to { stroke-dashoffset: 0; }
+    }
+
+    @keyframes dotPop {
+      from { opacity: 0; transform: scale(.2); }
+      to { opacity: 1; transform: scale(1); }
+    }
+
+    @keyframes fill {
+      to { width: var(--target); }
+    }
+
+    @keyframes ticker {
+      from { transform: translateX(0); }
+      to { transform: translateX(-100%); }
+    }
+
+    @keyframes shine {
+      0%, 54% { transform: translateX(-55%) rotate(8deg); }
+      100% { transform: translateX(55%) rotate(8deg); }
+    }
+
+    @keyframes load {
+      from { transform: scaleX(0); }
+      to { transform: scaleX(1); }
+    }
+
+    @media (max-width: 480px) {
+      .story {
+        width: 100vw;
+        height: 100svh;
+        min-height: 620px;
+        border-radius: 0;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *,
+      *::before,
+      *::after {
+        animation-duration: .01ms !important;
+        animation-iteration-count: 1 !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="story" aria-label="H28 Yüz Borsası hikaye kartı">
+    <div class="progress" aria-hidden="true"><span></span></div>
+    <section class="wrap">
+      <div class="eyebrow">H28 potansiyel endeksi</div>
+      <h1>Yüzün yükselişte.</h1>
+      <p class="subtitle">Bugünkü temel güçlü. Tavan daha yukarıda ve en büyük sıçrama hâlâ açık.</p>
+
+      <div class="ticker" aria-hidden="true">
+        <span>GENEL 70 → 82 &nbsp; • &nbsp; SIRALAMA 84 → 96 &nbsp; • &nbsp; POTANSİYEL +12 &nbsp; • &nbsp;</span>
+        <span>GENEL 70 → 82 &nbsp; • &nbsp; SIRALAMA 84 → 96 &nbsp; • &nbsp; POTANSİYEL +12 &nbsp; • &nbsp;</span>
+      </div>
+
+      <div class="market">
+        <div class="chart" aria-hidden="true">
+          <svg viewBox="0 0 330 175" role="img">
+            <line class="grid-line" x1="8" y1="136" x2="322" y2="136"></line>
+            <line class="grid-line" x1="8" y1="88" x2="322" y2="88"></line>
+            <line class="grid-line" x1="8" y1="40" x2="322" y2="40"></line>
+            <path class="market-line" d="M20 122 C80 118 104 98 144 89 C198 78 218 48 305 35"></path>
+            <circle class="dot one" cx="20" cy="122" r="9"></circle>
+            <circle class="dot two" cx="305" cy="35" r="11"></circle>
+          </svg>
+        </div>
+
+        <div class="stats">
+          <div class="stat">
+            <small>Bugünkü skor</small>
+            <strong><span data-count="70">0</span></strong>
+            <em>84 kişiden önde</em>
+          </div>
+          <div class="stat">
+            <small>Açık tavan</small>
+            <strong><span data-count="82">0</span></strong>
+            <em>96 çizgisine kadar</em>
+          </div>
+        </div>
+      </div>
+
+      <div class="bars">
+        <div class="bar-row">
+          <div class="bar-label"><span>Genel görünüm</span><span>70 → 82</span></div>
+          <div class="bar"><span style="--target:82%"></span></div>
+        </div>
+        <div class="bar-row">
+          <div class="bar-label"><span>Sıralama çizgisi</span><span>84 → 96</span></div>
+          <div class="bar"><span style="--target:96%"></span></div>
+        </div>
+      </div>
+
+      <p class="closing">Paylaşılabilir özet: başlangıç zaten ortalamanın üstü, hedef çizgisi elit alana yaklaşıyor.</p>
+    </section>
+  </main>
+
+  <script>
+    (() => {
+      const start = performance.now();
+      const duration = 1350;
+      const counters = document.querySelectorAll("[data-count]");
+      const tick = (now) => {
+        const progress = Math.min((now - start) / duration, 1);
+        const eased = 1 - Math.pow(1 - progress, 3);
+        counters.forEach((item) => {
+          const target = Number(item.dataset.count);
+          item.textContent = Math.round(target * eased);
+        });
+        if (progress < 1) requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    })();
+  </script>
+</body>
+</html>

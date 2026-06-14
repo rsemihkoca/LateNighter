@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from 'react'
 import { ThemeContext, type Theme } from './theme/ThemeContext'
-import { DocProvider, type DocSession } from './doc/DocContext'
+import { DocProvider } from './doc/DocContext'
+import type { DocSession } from './doc/DocContextCore'
 import { ChromeBar } from './components/ChromeBar'
 import { Workspace } from './components/Workspace'
 import { ProjectPicker } from './components/ProjectPicker'
@@ -23,7 +24,7 @@ export default function App() {
       {session ? (
         <DocProvider session={session} onClose={closeProject}>
           <div
-            className="app-shell"
+            className="app-shell group"
             data-theme={theme}
             data-tauri-window={isTauriShell ? 'true' : undefined}
           >

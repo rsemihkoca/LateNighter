@@ -1,136 +1,51 @@
 import {
-  createContext,
   useCallback,
-  useContext,
   useEffect,
   useMemo,
   useRef,
   useState,
   useSyncExternalStore,
 } from 'react'
-import type { ProjectRef, ProjectStorage } from '../storage/types'
-import { slugifyName } from './slug'
 import { treeSpecToDocPatch } from './treeSync'
 import {
   getRevision as getSurfaceRevision,
+  getSurface,
   getSurfaceHtml,
+  getSurfaceImageUrl,
   hydrateSurfaces,
   setSurface,
   subscribe as subscribeSurfaces,
   type SurfaceBundle,
 } from '../storage/surfaceStore'
-import type {
-  Flow,
-  ProjectDoc,
-  Screen,
-  ScreenState,
-  ScreenSurface,
-  XY,
-} from './types'
-
-export interface DocSession {
-  storage: ProjectStorage
-  ref: ProjectRef
-  doc: ProjectDoc
-}
-
-export type SaveState = 'saved' | 'saving' | 'dirty' | 'error'
-
-interface DocContextValue {
-  doc: ProjectDoc
-  projectRef: ProjectRef
-  storageLabel: string
-  saveState: SaveState
-  /** Bumps on structural edits + external reloads — views reseed transient state on change. */
-  syncKey: number
-  selectedScreenId: string | null
-  selectScreen: (id: string | null) => void
-  moveScreen: (id: string, position: XY) => void
-  connectScreens: (source: string, target: string) => void
-  removeEdges: (ids: string[]) => void
-  removeScreens: (ids: string[]) => void
-  addScreen: (parent?: { flowId: string }, options?: { surface?: ScreenSurface }) => void
-  renameScreen: (id: string, name: string) => void
-  /** Drag-and-drop reorders (Explorer). `ref`+position insert against the
-      target container AFTER the dragged node is removed, so same-container
-      reorder is off-by-one-safe. */
-  reorderScreen: (
-    screenId: string,
-    toFlowId: string | null,
-    refScreenId: string | null,
-    position: 'before' | 'after',
-  ) => void
-  moveState: (
-    stateId: string,
-    toScreenId: string,
-    refStateId: string | null,
-    position: 'before' | 'after',
-  ) => void
-  moveFlow: (
-    flowId: string,
-    parent: { flowId: string } | { screenId: string } | null,
-    refFlowId: string | null,
-    position: 'before' | 'after',
-  ) => void
-  setScreenSurface: (id: string, surface: ScreenSurface) => void
-  setScreenLiveContent: (id: string, bundle: SurfaceBundle, kind: 'htmlFile' | 'htmlFolder') => void
-  setScreenPreviewImage: (id: string, previewImage: string) => void
-  /** Inlined HTML for a screen surface (from the surfaceStore), for the iframe. */
-  getRenderHtml: (id: string, surface: ScreenSurface) => string | undefined
-  removeScreen: (id: string) => void
-  /** Explorer flow ops. parent: under a screen (launch) or a flow (nest), or top-level. */
-  addFlow: (parent?: { flowId: string } | { screenId: string }) => void
-  renameFlow: (id: string, name: string) => void
-  removeFlow: (id: string) => void
-  /** Explorer state ops (a vertical state of a screen). */
-  addState: (screenId: string) => void
-  renameState: (id: string, name: string) => void
-  removeState: (id: string) => void
-  /** Switch the device every screen is framed in (re-derives the layout). */
-  setDevice: (deviceId: string) => void
-  closeProject: () => void
-}
-
-const DocContext = createContext<DocContextValue | null>(null)
-
-export function useDoc(): DocContextValue {
-  const ctx = useContext(DocContext)
-  if (!ctx) throw new Error('useDoc must be used within <DocProvider>')
-  return ctx
-}
+import { imageDataUrlToBundle, imageUrlOf } from '../storage/surfaceImport'
+import type { ProjectDoc, ScreenSurface, XY } from './types'
+import { DocContext, type DocContextValue, type DocSession, type SaveState } from './DocContextCore'
+import {
+  addFlowToDoc,
+  addScreenToDoc,
+  addStateToDoc,
+  connectScreensInDoc,
+  moveFlowInDoc,
+  moveScreenPosition,
+  moveStateInDoc,
+  removeEdgesFromDoc,
+  removeFlowFromDoc,
+  removeScreensFromDoc,
+  removeStateFromDoc,
+  renameFlowInDoc,
+  renameScreenInDoc,
+  renameStateInDoc,
+  reorderScreenInDoc,
+  setDeviceInDoc,
+  setScreenLiveContentInDoc,
+  setScreenPreviewImageInDoc,
+  setScreenSurfaceInDoc,
+} from './mutations'
 
 const SAVE_DEBOUNCE = 400
 const POLL_INTERVAL = 1500
 
 const serialize = (doc: ProjectDoc) => JSON.stringify(doc, null, 2)
-
-/** True if `ancestorId` is `flowId` itself or one of its ancestors (walking up
- *  parentFlowId / startsFromScreenId). Used to reject cyclic flow nesting. */
-function flowIsAncestor(doc: ProjectDoc, ancestorId: string, flowId: string): boolean {
-  const byId = new Map(doc.flows.map((f) => [f.id, f]))
-  let cur = byId.get(flowId)
-  const seen = new Set<string>()
-  while (cur && !seen.has(cur.id)) {
-    if (cur.id === ancestorId) return true
-    seen.add(cur.id)
-    if (cur.parentFlowId) cur = byId.get(cur.parentFlowId)
-    else if (cur.startsFromScreenId) {
-      const owner = doc.flows.find((f) => f.screenIds.includes(cur!.startsFromScreenId!))
-      cur = owner
-    } else cur = undefined
-  }
-  return false
-}
-
-function uniqueEdgeId(doc: ProjectDoc, source: string, target: string) {
-  const taken = new Set(doc.edges.map((e) => e.id))
-  const base = `e-${source}-${target}`
-  if (!taken.has(base)) return base
-
-  let i = 2
-  while (taken.has(`${base}-${i}`)) i += 1
-  return `${base}-${i}`
-}
 
 export function DocProvider({
   session,
@@ -233,11 +148,34 @@ export function DocProvider({
         // genuinely-absent folder) than to wedge saving forever.
         if (active) hydrated.current = true
       }
+      // Legacy migration (disk backends only): older docs stored the preview
+      // image as a base64 data URL in JSON. Move it into the surface store —
+      // which lands it on disk under preview/ and strips it from the JSON on the
+      // next save. Runs AFTER hydrateSurfaces so its store.clear() can't wipe the
+      // seed; the !getSurface guard keeps it idempotent across reopens.
+      if (!active) return
+      let migrated = false
+      for (const screen of docRef.current.screens) {
+        const legacy = screen.previewImage
+        if (!legacy || getSurface(screen.id, 'preview')) continue
+        const bundle = imageDataUrlToBundle(legacy)
+        if (bundle) {
+          setSurface(screen.id, 'preview', bundle)
+          migrated = true
+        }
+      }
+      if (migrated) {
+        setDoc((d) => ({
+          ...d,
+          screens: d.screens.map((s) => ({ ...s, previewImage: undefined })),
+        }))
+        scheduleSave()
+      }
     })()
     return () => {
       active = false
     }
-  }, [storage, ref])
+  }, [storage, ref, scheduleSave])
 
   const mutate = useCallback(
     (fn: (d: ProjectDoc) => ProjectDoc, structural = false) => {
@@ -251,41 +189,21 @@ export function DocProvider({
   const moveScreen = useCallback(
     (id: string, position: XY) => {
       // Position-only: do NOT bump syncKey (React Flow already reflects the drag).
-      mutate((d) => ({
-        ...d,
-        screens: d.screens.map((s) => (s.id === id ? { ...s, position } : s)),
-      }))
+      mutate((d) => moveScreenPosition(d, id, position))
     },
     [mutate],
   )
 
   const connectScreens = useCallback(
     (source: string, target: string) => {
-      if (source === target) return
-      mutate(
-        (d) => {
-          const hasScreens =
-            d.screens.some((s) => s.id === source) && d.screens.some((s) => s.id === target)
-          if (!hasScreens || d.edges.some((e) => e.source === source && e.target === target)) {
-            return d
-          }
-
-          return {
-            ...d,
-            edges: [...d.edges, { id: uniqueEdgeId(d, source, target), source, target }],
-          }
-        },
-        true,
-      )
+      mutate((d) => connectScreensInDoc(d, source, target), true)
     },
     [mutate],
   )
 
   const removeEdges = useCallback(
     (ids: string[]) => {
-      const idSet = new Set(ids)
-      if (idSet.size === 0) return
-      mutate((d) => ({ ...d, edges: d.edges.filter((e) => !idSet.has(e.id)) }), true)
+      mutate((d) => removeEdgesFromDoc(d, ids), true)
     },
     [mutate],
   )
@@ -295,32 +213,14 @@ export function DocProvider({
       const idSet = new Set(ids)
       if (idSet.size === 0) return
       setSelectedScreenId((current) => (current && idSet.has(current) ? null : current))
-      mutate(
-        (d) => ({
-          ...d,
-          screens: d.screens.filter((s) => !idSet.has(s.id)),
-          edges: d.edges.filter((e) => !idSet.has(e.source) && !idSet.has(e.target)),
-          flows: d.flows.map((f) => ({
-            ...f,
-            screenIds: f.screenIds.filter((sid) => !idSet.has(sid)),
-          })),
-        }),
-        true,
-      )
+      mutate((d) => removeScreensFromDoc(d, ids), true)
     },
     [mutate],
   )
 
   const renameScreen = useCallback(
     (id: string, name: string) => {
-      const next = slugifyName(name)
-      mutate(
-        (d) => ({
-          ...d,
-          screens: d.screens.map((s) => (s.id === id ? { ...s, name: next } : s)),
-        }),
-        true,
-      )
+      mutate((d) => renameScreenInDoc(d, id, name), true)
     },
     [mutate],
   )
@@ -339,26 +239,7 @@ export function DocProvider({
       refScreenId: string | null,
       position: 'before' | 'after',
     ) => {
-      mutate((d) => {
-        if (!d.screens.some((s) => s.id === screenId)) return d
-        // Remove from every flow (single-flow membership), then re-insert.
-        let flows = d.flows.map((f) =>
-          f.screenIds.includes(screenId)
-            ? { ...f, screenIds: f.screenIds.filter((id) => id !== screenId) }
-            : f,
-        )
-        if (toFlowId) {
-          flows = flows.map((f) => {
-            if (f.id !== toFlowId) return f
-            const ids = [...f.screenIds]
-            const i = refScreenId ? ids.indexOf(refScreenId) : -1
-            if (i < 0) ids.push(screenId)
-            else ids.splice(position === 'after' ? i + 1 : i, 0, screenId)
-            return { ...f, screenIds: ids }
-          })
-        }
-        return { ...d, flows }
-      }, true)
+      mutate((d) => reorderScreenInDoc(d, screenId, toFlowId, refScreenId, position), true)
     },
     [mutate],
   )
@@ -370,24 +251,7 @@ export function DocProvider({
       refStateId: string | null,
       position: 'before' | 'after',
     ) => {
-      mutate((d) => {
-        let moved: ScreenState | undefined
-        const removed = d.screens.map((s) => {
-          if (!s.states.some((st) => st.id === stateId)) return s
-          moved = s.states.find((st) => st.id === stateId)
-          return { ...s, states: s.states.filter((st) => st.id !== stateId) }
-        })
-        if (!moved) return d
-        const screens = removed.map((s) => {
-          if (s.id !== toScreenId) return s
-          const states = [...s.states]
-          const i = refStateId ? states.findIndex((st) => st.id === refStateId) : -1
-          if (i < 0) states.push(moved!)
-          else states.splice(position === 'after' ? i + 1 : i, 0, moved!)
-          return { ...s, states }
-        })
-        return { ...d, screens }
-      }, true)
+      mutate((d) => moveStateInDoc(d, stateId, toScreenId, refStateId, position), true)
     },
     [mutate],
   )
@@ -399,76 +263,29 @@ export function DocProvider({
       refFlowId: string | null,
       position: 'before' | 'after',
     ) => {
-      mutate((d) => {
-        const flow = d.flows.find((f) => f.id === flowId)
-        if (!flow) return d
-        // Reject cyclic nesting (a flow under itself or a descendant).
-        if (parent && 'flowId' in parent) {
-          if (parent.flowId === flowId || flowIsAncestor(d, flowId, parent.flowId)) return d
-        }
-        const updated: Flow = {
-          ...flow,
-          parentFlowId: parent && 'flowId' in parent ? parent.flowId : undefined,
-          startsFromScreenId: parent && 'screenId' in parent ? parent.screenId : undefined,
-        }
-        // Reorder within the flat flows array (sibling order = array order).
-        const without = d.flows.filter((f) => f.id !== flowId)
-        let at = without.length
-        if (refFlowId && refFlowId !== flowId) {
-          const i = without.findIndex((f) => f.id === refFlowId)
-          if (i >= 0) at = position === 'after' ? i + 1 : i
-        }
-        const flows = [...without.slice(0, at), updated, ...without.slice(at)]
-        return { ...d, flows }
-      }, true)
+      mutate((d) => moveFlowInDoc(d, flowId, parent, refFlowId, position), true)
     },
     [mutate],
   )
 
   const setDevice = useCallback(
     (deviceId: string) => {
-      // Structural: the device drives node size + layout pitches, so the
-      // canvas must re-derive and re-fit (syncKey bump).
-      mutate((d) => (d.deviceId === deviceId ? d : { ...d, deviceId }), true)
+      // Structural: the device drives node size + layout pitches.
+      mutate((d) => setDeviceInDoc(d, deviceId), true)
     },
     [mutate],
   )
 
   const addScreen = useCallback(
     (parent?: { flowId: string }, options?: { surface?: ScreenSurface }) => {
-      mutate((d) => {
-        const n = d.screens.length
-        const id = `screen-${Date.now().toString(36)}`
-        const newScreen: Screen = {
-          id,
-          name: `newScreen${n + 1}`,
-          meta: 'Draft',
-          surface: options?.surface ?? 'preview',
-          position: { x: (n % 5) * 260, y: 540 },
-          states: [],
-        }
-        // Target flow: the one given (Explorer), else the main happy path.
-        const targetId = parent?.flowId ?? d.flows.find((f) => f.kind === 'main')?.id
-        const flows = targetId
-          ? d.flows.map((f) =>
-              f.id === targetId ? { ...f, screenIds: [...f.screenIds, id] } : f,
-            )
-          : d.flows
-        return { ...d, screens: [...d.screens, newScreen], flows }
-      }, true)
+      mutate((d) => addScreenToDoc(d, parent, options), true)
     },
     [mutate],
   )
 
   const setScreenSurface = useCallback(
     (id: string, surface: ScreenSurface) => {
-      mutate(
-        (d) => ({
-          ...d,
-          screens: d.screens.map((s) => (s.id === id ? { ...s, surface } : s)),
-        }),
-        true,
-      )
+      mutate((d) => setScreenSurfaceInDoc(d, id, surface), true)
     },
     [mutate],
   )
@@ -478,31 +295,21 @@ export function DocProvider({
   const setScreenLiveContent = useCallback(
     (id: string, bundle: SurfaceBundle, kind: 'htmlFile' | 'htmlFolder') => {
       setSurface(id, 'live', bundle)
-      mutate(
-        (d) => ({
-          ...d,
-          screens: d.screens.map((s) => (s.id === id ? { ...s, liveContent: kind } : s)),
-        }),
-        true,
-      )
+      mutate((d) => setScreenLiveContentInDoc(d, id, kind), true)
     },
     [mutate],
   )
 
-  // Preview surface = an image only (data URL in the doc).
+  // Preview surface = an image. The bytes live in the surfaceStore (→ disk under
+  // preview/, keeping JSON light). Backends without a file tree (web localStorage)
+  // have no disk to hydrate from, so we also keep the data URL in the JSON there.
   const setScreenPreviewImage = useCallback(
-    (id: string, previewImage: string) => {
-      mutate(
-        (d) => ({
-          ...d,
-          screens: d.screens.map((s) =>
-            s.id === id ? { ...s, previewImage, previewContent: 'image' } : s,
-          ),
-        }),
-        true,
-      )
+    (id: string, bundle: SurfaceBundle) => {
+      setSurface(id, 'preview', bundle)
+      const fallback = storage.readSurfaceAssets ? undefined : imageUrlOf(bundle)
+      mutate((d) => setScreenPreviewImageInDoc(d, id, fallback), true)
     },
-    [mutate],
+    [mutate, storage],
   )
 
   const getRenderHtml = useCallback(
@@ -510,26 +317,21 @@ export function DocProvider({
     [],
   )
 
+  const getRenderImage = useCallback(
+    (id: string, surface: ScreenSurface) => getSurfaceImageUrl(id, surface),
+    [],
+  )
+
   const addFlow = useCallback(
     (parent?: { flowId: string } | { screenId: string }) => {
-      mutate((d) => {
-        const id = `flow-${Date.now().toString(36)}`
-        const flow: Flow = { id, name: 'newFlow', kind: 'sub', screenIds: [] }
-        if (parent && 'screenId' in parent) flow.startsFromScreenId = parent.screenId
-        else if (parent && 'flowId' in parent) flow.parentFlowId = parent.flowId
-        return { ...d, flows: [...d.flows, flow] }
-      }, true)
+      mutate((d) => addFlowToDoc(d, parent), true)
     },
     [mutate],
   )
 
   const renameFlow = useCallback(
     (id: string, name: string) => {
-      const next = slugifyName(name)
-      mutate(
-        (d) => ({ ...d, flows: d.flows.map((f) => (f.id === id ? { ...f, name: next } : f)) }),
-        true,
-      )
+      mutate((d) => renameFlowInDoc(d, id, name), true)
     },
     [mutate],
   )
@@ -539,88 +341,28 @@ export function DocProvider({
   // recursive folder delete.
   const removeFlow = useCallback(
     (id: string) => {
-      mutate((d) => {
-        const remove = new Set<string>()
-        const collect = (fid: string) => {
-          if (remove.has(fid)) return
-          remove.add(fid)
-          const f = d.flows.find((x) => x.id === fid)
-          if (!f) return
-          f.screenIds.forEach((sid) =>
-            d.flows.filter((x) => x.startsFromScreenId === sid).forEach((x) => collect(x.id)),
-          )
-          d.flows
-            .filter((x) => x.parentFlowId === fid && !x.startsFromScreenId)
-            .forEach((x) => collect(x.id))
-        }
-        collect(id)
-
-        const flows = d.flows.filter((f) => !remove.has(f.id))
-        const candidates = new Set(
-          d.flows.filter((f) => remove.has(f.id)).flatMap((f) => f.screenIds),
-        )
-        const stillReferenced = new Set(flows.flatMap((f) => f.screenIds))
-        const dropScreens = new Set(
-          [...candidates].filter((sid) => !stillReferenced.has(sid)),
-        )
-        return {
-          ...d,
-          flows,
-          screens: d.screens.filter((s) => !dropScreens.has(s.id)),
-          edges: d.edges.filter(
-            (e) => !dropScreens.has(e.source) && !dropScreens.has(e.target),
-          ),
-        }
-      }, true)
+      mutate((d) => removeFlowFromDoc(d, id), true)
     },
     [mutate],
   )
 
   const addState = useCallback(
     (screenId: string) => {
-      mutate((d) => {
-        const id = `state-${Date.now().toString(36)}`
-        const state: ScreenState = { id, name: 'newState' }
-        return {
-          ...d,
-          screens: d.screens.map((s) =>
-            s.id === screenId ? { ...s, states: [...s.states, state] } : s,
-          ),
-        }
-      }, true)
+      mutate((d) => addStateToDoc(d, screenId), true)
     },
     [mutate],
   )
 
   const renameState = useCallback(
     (id: string, name: string) => {
-      const next = slugifyName(name)
-      mutate(
-        (d) => ({
-          ...d,
-          screens: d.screens.map((s) => ({
-            ...s,
-            states: s.states.map((st) => (st.id === id ? { ...st, name: next } : st)),
-          })),
-        }),
-        true,
-      )
+      mutate((d) => renameStateInDoc(d, id, name), true)
     },
     [mutate],
   )
 
   const removeState = useCallback(
     (id: string) => {
-      mutate(
-        (d) => ({
-          ...d,
-          screens: d.screens.map((s) => ({
-            ...s,
-            states: s.states.filter((st) => st.id !== id),
-          })),
-        }),
-        true,
-      )
+      mutate((d) => removeStateFromDoc(d, id), true)
     },
     [mutate],
   )
@@ -724,6 +466,7 @@ export function DocProvider({
       setScreenLiveContent,
       setScreenPreviewImage,
       getRenderHtml,
+      getRenderImage,
       removeScreen,
       addFlow,
       renameFlow,
@@ -759,6 +502,7 @@ export function DocProvider({
       setScreenLiveContent,
       setScreenPreviewImage,
       getRenderHtml,
+      getRenderImage,
       removeScreen,
       addFlow,
       renameFlow,

@@ -1,0 +1,98 @@
+/* ============================================================
+   Tailwind v4 entry + token bridge.
+
+   tokens.css stays the single source of truth for color values
+   and the light/[data-theme="dark"] switch. This file only
+   ALIASES those CSS custom properties into Tailwind's theme
+   namespaces with `@theme inline`, so color utilities compile to
+   `var(--token)` directly and re-resolve under [data-theme] with
+   NO `dark:` variants needed.
+
+   Color naming rules (kept mechanical to avoid mapping mistakes):
+     --text*   -> --color-fg*     (text-fg, text-fg-muted, ...)
+     --bg      -> --color-bg      (bg-bg)
+     --bg-X    -> --color-X       (bg-panel, bg-subtle, bg-muted, ...)
+     everything else -> --color-<same-name>
+
+   Radius / ease are theme-INDEPENDENT, so they are literal values
+   here (custom keys avoid colliding with tokens.css names).
+   Shadows ARE theme-dependent and must switch; rather than alias
+   them (which would self-reference tokens.css's --shadow-*), use
+   `shadow-[var(--shadow-md)]` arbitrary utilities in components.
+   ============================================================ */
+@import "tailwindcss";
+
+/* This app switches theme via a [data-theme="dark"] attribute (not the class or
+   media default), so register a matching `dark:` variant. Most colors switch
+   automatically through the token bridge below; `dark:` is only for the few
+   spots that intentionally use a DIFFERENT token in dark mode. */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+@theme inline {
+  /* Surfaces (used with bg-*) */
+  --color-bg: var(--bg);
+  --color-app: var(--bg-app);
+  --color-panel: var(--bg-panel);
+  --color-subtle: var(--bg-subtle);
+  --color-muted: var(--bg-muted);
+  --color-elevated: var(--bg-elevated);
+  --color-fill: var(--bg-fill);
+  --color-fill-secondary: var(--bg-fill-secondary);
+  --color-fill-tertiary: var(--bg-fill-tertiary);
+
+  /* Text (used with text-*) */
+  --color-fg: var(--text);
+  --color-fg-strong: var(--text-strong);
+  --color-fg-muted: var(--text-muted);
+  --color-fg-soft: var(--text-soft);
+  --color-fg-faint: var(--text-faint);
+
+  /* Borders */
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-border-soft: var(--border-soft);
+
+  /* Accent */
+  --color-accent: var(--accent);
+  --color-accent-strong: var(--accent-strong);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-tint: var(--accent-tint);
+  --color-accent-hover: var(--accent-hover);
+
+  /* Semantic status */
+  --color-green: var(--green);
+  --color-green-bg: var(--green-bg);
+  --color-green-border: var(--green-border);
+  --color-blue: var(--blue);
+  --color-blue-bg: var(--blue-bg);
+  --color-blue-border: var(--blue-border);
+  --color-purple: var(--purple);
+  --color-purple-bg: var(--purple-bg);
+  --color-purple-border: var(--purple-border);
+  --color-red: var(--red);
+  --color-red-bg: var(--red-bg);
+  --color-red-border: var(--red-border);
+  --color-amber: var(--amber);
+  --color-amber-bg: var(--amber-bg);
+  --color-amber-border: var(--amber-border);
+
+  --color-selected: var(--selected);
+  --color-selected-soft: var(--selected-soft);
+
+  /* Radii — literal (theme-independent). Maps app token values:
+     xs=4 sm=6 base=8(--radius) md=10(--radius-md) lg=12(--radius-lg) */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-base: 8px;
+  --radius-md: 10px;
+  --radius-lg: 12px;
+  --radius-pill: 999px;
+
+  /* Fonts (font-*) */
+  --font-sans: var(--sans);
+  --font-serif: var(--serif);
+  --font-mono: var(--mono);
+
+  /* Easing — overrides Tailwind's default ease-out to the app curve */
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+}

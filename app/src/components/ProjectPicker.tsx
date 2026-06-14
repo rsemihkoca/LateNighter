@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { createInitialDoc } from '../doc/initialDoc'
-import type { DocSession } from '../doc/DocContext'
+import type { DocSession } from '../doc/DocContextCore'
 import {
   createFsStorage,
   ensurePermission,
@@ -16,6 +16,17 @@ import {
   restoreTauriDir,
 } from '../storage/tauri'
 import { slugify, type ProjectRef, type ProjectStorage } from '../storage/types'
+
+// Repeated picker controls (were .picker__choice / --ghost / .picker__project).
+const CHOICE_BASE =
+  'flex flex-col gap-[3px] px-4 py-3.5 text-left border border-border rounded-md text-fg cursor-pointer font-[inherit] transition-[border-color,background-color] duration-[120ms] ease-out hover:border-accent hover:bg-accent-tint'
+const CHOICE = `${CHOICE_BASE} bg-bg`
+const CHOICE_GHOST = `${CHOICE_BASE} bg-transparent`
+const CHOICE_TITLE = 'text-sm font-[620] text-fg-strong'
+const CHOICE_DESC = 'text-xs text-fg-muted leading-[1.45]'
+const PROJECT_BTN =
+  'flex flex-col gap-0.5 px-3 py-2.5 text-left border border-border rounded-base bg-bg text-fg cursor-pointer font-[inherit] transition-[border-color,background-color] duration-[120ms] ease-out hover:border-accent hover:bg-accent-tint'
+const NOTE = 'm-0 text-[12.5px] text-fg-muted leading-normal'
 
 function findFolderProject(storage: ProjectStorage, projects: ProjectRef[]) {
   const folderId = slugify(storage.label)
@@ -178,75 +189,80 @@ export function ProjectPicker({ onOpen }: { onOpen: (session: DocSession) => voi
   }, [createProject, storage, newName])
 
   return (
-    <div className="picker">
-      <div className="picker__card">
-        <div className="picker__head">
-          <span className="picker__logo" aria-hidden>
+    <div className="min-h-full flex items-center justify-center p-8">
+      <div className="w-full max-w-[540px] p-7 bg-panel border border-border rounded-lg shadow-[var(--shadow-lg)]">
+        <div className="flex gap-3.5 items-start mb-[22px]">
+          <span
+            className="inline-flex items-center justify-center w-[38px] h-[38px] flex-none rounded-md bg-[linear-gradient(135deg,var(--accent-tint)_0%,var(--accent-soft)_100%)] text-accent text-lg"
+            aria-hidden
+          >
             ◆
           </span>
           <div>
-            <h1 className="picker__title">LateNighter</h1>
-            <p className="picker__subtitle">
+            <h1 className="m-0 text-[19px] font-[680] tracking-[-0.01em] text-fg-strong">LateNighter</h1>
+            <p className="mt-1 text-[13px] leading-normal text-fg-muted">
               Pick a project — JSON is the single source; React Flow and the tree are its views.
             </p>
           </div>
         </div>
 
         {!storage ? (
-          <div className="picker__choices">
+          <div className="flex flex-col gap-2.5">
             {tauri ? (
               <>
-                <button className="picker__choice" type="button" onClick={chooseFolder}>
-                  <span className="picker__choice-title">📂 Choose Folder</span>
-                  <span className="picker__choice-desc">
+                <button className={CHOICE} type="button" onClick={chooseFolder}>
+                  <span className={CHOICE_TITLE}>📂 Choose Folder</span>
+                  <span className={CHOICE_DESC}>
                     Opens the project named after the folder, or creates an empty one.
                   </span>
                 </button>
                 {lastTauriDir && (
-                  <button className="picker__choice" type="button" onClick={reconnectTauri}>
-                    <span className="picker__choice-title">↩ Back to last folder</span>
-                    <span className="picker__choice-desc">{lastTauriDir}</span>
+                  <button className={CHOICE} type="button" onClick={reconnectTauri}>
+                    <span className={CHOICE_TITLE}>↩ Back to last folder</span>
+                    <span className={CHOICE_DESC}>{lastTauriDir}</span>
                   </button>
                 )}
               </>
             ) : fsSupported ? (
               <>
-                <button className="picker__choice" type="button" onClick={chooseFolder}>
-                  <span className="picker__choice-title">📁 Choose Folder</span>
-                  <span className="picker__choice-desc">
+                <button className={CHOICE} type="button" onClick={chooseFolder}>
+                  <span className={CHOICE_TITLE}>📁 Choose Folder</span>
+                  <span className={CHOICE_DESC}>
                     Opens the project named after the folder, or creates an empty one.
                   </span>
                 </button>
                 {lastDir && (
-                  <button className="picker__choice" type="button" onClick={reconnectLast}>
-                    <span className="picker__choice-title">↩ Back to last folder</span>
-                    <span className="picker__choice-desc">{lastDir.name}</span>
+                  <button className={CHOICE} type="button" onClick={reconnectLast}>
+                    <span className={CHOICE_TITLE}>↩ Back to last folder</span>
+                    <span className={CHOICE_DESC}>{lastDir.name}</span>
                   </button>
                 )}
               </>
             ) : (
-              <p className="picker__note">
+              <p className={NOTE}>
                 Your browser doesn't support folder access (try Chrome/Arc/Brave). You can
                 continue with scratch.
               </p>
             )}
             <button
-              className="picker__choice picker__choice--ghost"
+              className={CHOICE_GHOST}
               type="button"
               onClick={() => activateStorage(localStorageBackend)}
             >
-              <span className="picker__choice-title">⚡ Start without files (scratch)</span>
-              <span className="picker__choice-desc">
+              <span className={CHOICE_TITLE}>⚡ Start without files (scratch)</span>
+              <span className={CHOICE_DESC}>
                 In browser storage — quick experiments, without a real .json file.
               </span>
             </button>
           </div>
         ) : (
-          <div className="picker__browse">
-            <div className="picker__browse-head">
-              <span className="picker__location">{storage.label}</span>
+          <div className="flex flex-col gap-3.5">
+            <div className="flex items-center justify-between gap-2.5">
+              <span className="text-xs font-semibold text-fg-muted overflow-hidden text-ellipsis whitespace-nowrap">
+                {storage.label}
+              </span>
               <button
-                className="picker__link"
+                className="border-0 bg-transparent text-accent text-xs cursor-pointer font-[inherit]"
                 type="button"
                 onClick={() => {
                   setStorage(null)
@@ -257,29 +273,29 @@ export function ProjectPicker({ onOpen }: { onOpen: (session: DocSession) => voi
               </button>
             </div>
 
-            <div className="picker__list">
+            <div className="flex flex-col gap-1.5 max-h-[280px] overflow-y-auto">
               {projects.length === 0 && (
-                <p className="picker__note">
+                <p className={NOTE}>
                   No projects here — create one with a name.
                 </p>
               )}
               {projects.map((ref) => (
                 <button
                   key={ref.id}
-                  className="picker__project"
+                  className={PROJECT_BTN}
                   type="button"
                   disabled={busy}
                   onClick={() => openExisting(ref)}
                 >
-                  <span className="picker__project-name">{ref.name}</span>
-                  <span className="picker__project-id">{ref.id}.json</span>
+                  <span className="text-[13px] font-semibold text-fg-strong">{ref.name}</span>
+                  <span className="text-[11px] text-fg-faint font-mono">{ref.id}.json</span>
                 </button>
               ))}
             </div>
 
-            <div className="picker__create">
+            <div className="flex gap-2">
               <input
-                className="picker__input"
+                className="flex-[1_1_auto] h-9 px-3 border border-border rounded-base bg-bg text-fg text-[13px] font-[inherit] focus:outline-none focus:border-accent focus:shadow-[0_0_0_3px_color-mix(in_srgb,var(--accent)_18%,transparent)]"
                 placeholder="Project name (optional)…"
                 value={newName}
                 disabled={busy}
@@ -287,7 +303,7 @@ export function ProjectPicker({ onOpen }: { onOpen: (session: DocSession) => voi
                 onKeyDown={(e) => e.key === 'Enter' && createNew()}
               />
               <button
-                className="picker__btn picker__btn--accent"
+                className="h-9 px-4 border border-accent rounded-base bg-accent text-white text-[13px] font-[560] font-[inherit] cursor-pointer whitespace-nowrap hover:bg-accent-hover disabled:opacity-50 disabled:cursor-default"
                 type="button"
                 disabled={busy}
                 onClick={createNew}
@@ -298,7 +314,11 @@ export function ProjectPicker({ onOpen }: { onOpen: (session: DocSession) => voi
           </div>
         )}
 
-        {error && <p className="picker__error">{error}</p>}
+        {error && (
+          <p className="mt-3.5 px-3 py-2 text-xs text-red bg-red-bg border border-red-border rounded-base">
+            {error}
+          </p>
+        )}
       </div>
     </div>
   )

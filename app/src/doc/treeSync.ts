@@ -62,17 +62,6 @@ const CONTENTS: SurfaceContent[] = ['image', 'htmlFile', 'htmlFolder']
 const asContent = (v: string | undefined): SurfaceContent | undefined =>
   CONTENTS.includes(v as SurfaceContent) ? (v as SurfaceContent) : undefined
 
-const IMAGE_EXT: Record<string, string> = {
-  'image/png': 'png',
-  'image/jpeg': 'jpg',
-  'image/webp': 'webp',
-  'image/gif': 'gif',
-  'image/svg+xml': 'svg',
-  'image/avif': 'avif',
-  'image/bmp': 'bmp',
-  'image/x-icon': 'ico',
-}
-
 /** Turn a surface bundle into AssetSpecs under `<prefix>/…` (live/ or preview/). */
 function bundleToSpecs(prefix: string, bundle: SurfaceBundle): AssetSpec[] {
   const specs: AssetSpec[] = []
@@ -84,36 +73,22 @@ function bundleToSpecs(prefix: string, bundle: SurfaceBundle): AssetSpec[] {
   return specs
 }
 
-/** Files to materialize under a screen folder: preview.<ext> (image) and the
-    live/ + preview/ html folders (pulled from the surfaceStore by screen id).
-    `managedDirs` marks which html subdirs are authoritative this save. */
+/** Files to materialize under a screen folder: the preview/ and live/ subdirs,
+    both pulled from the surfaceStore by screen id (the image is a one-file
+    `preview.<ext>` bundle; html/folder surfaces are multi-file). A surface is
+    authoritative (`managedDirs`) only when the store actually holds its bytes —
+    so an un-hydrated store never prunes the on-disk folder. */
 function screenAssets(s: Screen | undefined): { assets: AssetSpec[]; managedDirs: string[] } {
   const assets: AssetSpec[] = []
   const managedDirs: string[] = []
   if (!s) return { assets, managedDirs }
 
-  if (s.previewContent === 'image' && s.previewImage) {
-    // Image is JSON-canonical → always authoritative; also clear any stale preview/ html.
-    const m = /^data:([^;]+);base64,(.*)$/s.exec(s.previewImage)
-    if (m) {
-      const ext = IMAGE_EXT[m[1].toLowerCase()] ?? 'png'
-      assets.push({ name: `preview.${ext}`, base64: m[2] })
+  for (const surface of ['preview', 'live'] as const) {
+    const entry = getSurface(s.id, surface)
+    if (entry) {
+      assets.push(...bundleToSpecs(surface, entry.bundle))
+      managedDirs.push(surface)
     }
-    managedDirs.push('preview')
-  } else {
-    // Preview HTML/folder — authoritative only when the store holds the bytes.
-    const pv = getSurface(s.id, 'preview')
-    if (pv) {
-      assets.push(...bundleToSpecs('preview', pv.bundle))
-      managedDirs.push('preview')
-    }
-  }
-
-  // Live folder — authoritative only when the store holds the bytes.
-  const lv = getSurface(s.id, 'live')
-  if (lv) {
-    assets.push(...bundleToSpecs('live', lv.bundle))
-    managedDirs.push('live')
   }
 
   return { assets, managedDirs }

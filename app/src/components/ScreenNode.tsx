@@ -1,10 +1,29 @@
 import { useEffect, useRef, useState } from 'react'
 import { Handle, Position, type NodeProps } from '@xyflow/react'
-import { useDoc } from '../doc/DocContext'
+import { useDoc } from '../doc/DocContextCore'
 import { SURFACE_LABEL, type ScreenSurface, type SurfaceContent } from '../doc/types'
 import { CARD_HEADER_H, cardMetrics, getMockup } from './mockups'
 import { DeviceMockup } from './DeviceMockup'
-import { pickFolderBundle, pickHtmlFileBundle, pickPreviewImage } from '../storage/surfaceImport'
+import { pickFolderBundle, pickHtmlFileBundle, pickPreviewImageBundle } from '../storage/surfaceImport'
+
+// Screen card shadow stack (was .screen-card / :hover / .is-selected). Selected
+// swaps to the accent ring; otherwise base + hover lift.
+const CARD_BASE =
+  'box-border relative flex flex-col bg-panel rounded-lg text-fg font-sans overflow-hidden transition-[box-shadow] duration-[120ms] ease-out'
+const CARD_SHADOW =
+  'shadow-[var(--shadow-md),inset_0_0_0_1px_var(--border)] hover:shadow-[var(--shadow-lg),inset_0_0_0_1px_var(--border-strong)]'
+const CARD_SHADOW_SELECTED =
+  'shadow-[0_0_0_2px_var(--accent-soft),var(--shadow-md),inset_0_0_0_1.5px_var(--accent)]'
+
+// Surface toggle button (was .surface-switch__btn + .is-active, and the
+// .surface-live .is-active accent override pushed into JSX state).
+const SURFACE_BTN_BASE =
+  'min-w-0 px-px border-0 rounded-xs bg-transparent font-[inherit] text-[6px] font-bold leading-none cursor-pointer transition-[background-color,color,transform] duration-[140ms] active:scale-[0.96] motion-reduce:transition-none'
+function surfaceBtnClass(active: boolean, isLive: boolean): string {
+  if (active && isLive) return `${SURFACE_BTN_BASE} bg-accent text-white shadow-[var(--shadow-xs)]`
+  if (active) return `${SURFACE_BTN_BASE} bg-panel text-fg-strong shadow-[var(--shadow-xs)]`
+  return `${SURFACE_BTN_BASE} text-fg-muted hover:text-fg-strong`
+}
 
 export interface ScreenNodeData {
   name: string
@@ -24,8 +43,14 @@ export interface ScreenNodeData {
 // body. The card is fixed to the grid-snapped node size from cardMetrics() so
 // the lane guides hug its center.
 export function ScreenNode({ id, data, selected }: NodeProps) {
-  const { setScreenSurface, setScreenLiveContent, setScreenPreviewImage, getRenderHtml, renameScreen } =
-    useDoc()
+  const {
+    setScreenSurface,
+    setScreenLiveContent,
+    setScreenPreviewImage,
+    getRenderHtml,
+    getRenderImage,
+    renameScreen,
+  } = useDoc()
   const { name, surface = 'preview', previewImage, deviceId } = data as ScreenNodeData
   const spec = getMockup(deviceId)
   const m = cardMetrics(spec)
@@ -55,8 +80,8 @@ export function ScreenNode({ id, data, selected }: NodeProps) {
   }
   const chooseSurface = (next: ScreenSurface) => setScreenSurface(id, next)
   const addPreviewImage = async () => {
-    const dataUrl = await pickPreviewImage()
-    if (dataUrl) setScreenPreviewImage(id, dataUrl)
+    const bundle = await pickPreviewImageBundle()
+    if (bundle) setScreenPreviewImage(id, bundle)
   }
   const addLiveHtmlFile = async () => {
     const bundle = await pickHtmlFileBundle()
@@ -67,21 +92,25 @@ export function ScreenNode({ id, data, selected }: NodeProps) {
     if (bundle) setScreenLiveContent(id, bundle, 'htmlFolder')
   }
   const liveHtml = getRenderHtml(id, 'live')
+  const renderPreviewImage = previewImage ?? getRenderImage(id, 'preview')
 
   return (
     <div
-      className={`screen-card surface-${surface}${selected ? ' is-selected' : ''}`}
+      className={`${CARD_BASE} ${selected ? CARD_SHADOW_SELECTED : CARD_SHADOW}`}
       style={{ width: m.nodeW, height: m.nodeH }}
     >
       <Handle type="target" position={Position.Left} className="screen-node__handle" />
 
-      <header className="screen-card__head" style={{ height: CARD_HEADER_H }}>
-        <div className="screen-card__titlerow">
-          <span className="screen-card__title">
+      <header
+        className="flex-none box-border flex flex-col justify-center gap-px pl-2 pr-[3px]"
+        style={{ height: CARD_HEADER_H }}
+      >
+        <div className="flex items-center justify-between gap-1">
+          <span className="inline-flex items-center gap-1.5 flex-[1_1_auto] min-w-0">
             {editing ? (
               <input
                 ref={inputRef}
-                className="screen-card__name-input nodrag nopan"
+                className="nodrag nopan flex-[1_1_auto] min-w-0 m-0 px-1 py-px border border-accent rounded-sm bg-panel text-fg-strong font-[inherit] text-xs font-semibold outline-none"
                 value={draft}
                 onChange={(event) => setDraft(event.target.value)}
                 onPointerDown={stopCanvasGesture}
@@ -95,7 +124,7 @@ export function ScreenNode({ id, data, selected }: NodeProps) {
               />
             ) : (
               <span
-                className="screen-card__name"
+                className="text-xs font-semibold text-fg-strong overflow-hidden text-ellipsis whitespace-nowrap cursor-text"
                 title="Double-click to rename"
                 onDoubleClick={(event) => {
                   event.stopPropagation()
@@ -107,7 +136,7 @@ export function ScreenNode({ id, data, selected }: NodeProps) {
             )}
           </span>
           <div
-            className="surface-switch nodrag nopan"
+            className="nodrag nopan flex-none inline-grid grid-cols-[34px_26px] gap-px h-[11px] p-px border border-border rounded-sm bg-muted"
             role="group"
             aria-label={`${name} surface mode`}
             onPointerDown={stopCanvasGesture}
@@ -117,7 +146,7 @@ export function ScreenNode({ id, data, selected }: NodeProps) {
               <button
                 key={option}
                 type="button"
-                className={`surface-switch__btn${surface === option ? ' is-active' : ''}`}
+                className={surfaceBtnClass(surface === option, option === 'live')}
                 aria-pressed={surface === option}
                 onClick={(event) => {
                   event.stopPropagation()
@@ -131,7 +160,7 @@ export function ScreenNode({ id, data, selected }: NodeProps) {
         </div>
       </header>
 
-      <div className="screen-card__body">
+      <div className="flex-[1_1_auto] flex items-start justify-center min-h-0">
         <DeviceMockup mockup={spec} width={m.mockupW}>
           {surface === 'live' ? (
             <LiveSurface
@@ -144,7 +173,11 @@ export function ScreenNode({ id, data, selected }: NodeProps) {
               logicalWidth={spec.logicalWidth}
             />
           ) : (
-            <PreviewSurface image={previewImage} screenName={name} onAddImage={addPreviewImage} />
+            <PreviewSurface
+              image={renderPreviewImage}
+              screenName={name}
+              onAddImage={addPreviewImage}
+            />
           )}
         </DeviceMockup>
       </div>
@@ -161,12 +194,12 @@ interface AddAction {
 
 function SurfaceAddPlaceholder({ actions }: { actions: AddAction[] }) {
   return (
-    <div className="surface-add-placeholder">
+    <div className="flex w-full h-full min-h-full flex-col items-center justify-center gap-[5px] bg-[#e5e7eb] text-[#6b7280] font-sans">
       {actions.map((action) => (
         <button
           key={action.label}
           type="button"
-          className="surface-add-placeholder__btn nodrag nopan"
+          className="nodrag nopan px-2.5 py-1 border border-[#d8dde7] rounded-pill bg-white/[0.86] shadow-[0_4px_14px_rgba(17,24,39,0.08)] text-inherit font-[inherit] text-[10.5px] font-bold tracking-normal cursor-pointer transition-[background-color,border-color] duration-[120ms] hover:bg-white hover:border-accent hover:text-accent"
           onPointerDown={(event) => event.stopPropagation()}
           onDoubleClick={(event) => event.stopPropagation()}
           onClick={(event) => {
@@ -203,7 +236,7 @@ function ScaledFrame({
   const logicalHeight = glassHeight / scale
   return (
     <iframe
-      className="live-frame"
+      className="block w-full h-full border-0 bg-white"
       title={title}
       srcDoc={html}
       sandbox="allow-scripts"
@@ -232,7 +265,7 @@ function PreviewSurface({
   }
   return (
     <img
-      className="preview-image nodrag nopan"
+      className="nodrag nopan block w-full h-full object-contain object-center bg-white cursor-pointer"
       src={image}
       alt={`${screenName} preview`}
       draggable={false}
