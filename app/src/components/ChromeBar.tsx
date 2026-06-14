@@ -3,10 +3,10 @@ import { useDoc, type SaveState } from '../doc/DocContext'
 import { DevicePicker } from './DevicePicker'
 
 const SAVE_LABEL: Record<SaveState, string> = {
-  saved: 'Kaydedildi',
-  saving: 'Kaydediliyor…',
-  dirty: 'Bekliyor…',
-  error: 'Hata',
+  saved: 'Saved',
+  saving: 'Saving…',
+  dirty: 'Pending…',
+  error: 'Error',
 }
 
 export function ChromeBar() {
@@ -28,16 +28,16 @@ export function ChromeBar() {
       <div className="chrome__actions">
         <DevicePicker />
         <button className="chrome__btn" type="button" onClick={() => addScreen()}>
-          + Ekran
+          + Screen
         </button>
-        <button className="chrome__btn" type="button" onClick={closeProject} title="Projeler">
-          Projeler
+        <button className="chrome__btn" type="button" onClick={closeProject} title="Projects">
+          Projects
         </button>
         <button
           className="chrome__btn"
           type="button"
           onClick={toggleTheme}
-          title="Tema değiştir"
+          title="Toggle theme"
         >
           {theme === 'light' ? 'Dark' : 'Light'}
         </button>

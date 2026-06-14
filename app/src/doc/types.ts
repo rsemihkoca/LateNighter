@@ -7,20 +7,16 @@
 
 export const DOC_VERSION = 1
 
-export type ScreenStatus = 'locked' | 'new' | 'deleted' | 'changed'
 export type ScreenSurface = 'preview' | 'live'
-
-export const STATUS_LABEL: Record<ScreenStatus, string> = {
-  locked: 'Locked',
-  new: 'Yeni',
-  deleted: 'Silindi',
-  changed: 'Değişti',
-}
 
 export const SURFACE_LABEL: Record<ScreenSurface, string> = {
   preview: 'Preview',
   live: 'Live',
 }
+
+/** What a screen surface holds. Image bytes live in `previewImage` (data URL);
+    htmlFile/htmlFolder bytes live on disk + in the surfaceStore, not in JSON. */
+export type SurfaceContent = 'image' | 'htmlFile' | 'htmlFolder'
 
 export interface XY {
   x: number
@@ -31,7 +27,6 @@ export interface XY {
 export interface ScreenState {
   id: string
   name: string
-  status: ScreenStatus
 }
 
 /** A screen = a card on the canvas, a node in the tree. */
@@ -39,10 +34,15 @@ export interface Screen {
   id: string
   name: string
   meta: string
-  status: ScreenStatus
   /** Preview = blank/mock screen; Live = authored HTML surface. */
   surface?: ScreenSurface
-  liveHtml?: string
+  /** Preview surface image, stored as a data URL (only when previewContent='image'). */
+  previewImage?: string
+  /** What the preview surface holds. HTML/folder bytes live on disk + in the
+      surfaceStore (keyed by screen id), NOT in this JSON. */
+  previewContent?: SurfaceContent
+  /** What the live surface holds (always an HTML folder). */
+  liveContent?: SurfaceContent
   position: XY
   states: ScreenState[]
 }
@@ -69,20 +69,6 @@ export interface FlowEdge {
   target: string
 }
 
-/**
- * A committed snapshot of the design diff. The doc carries GitHub-diff
- * semantics (screens are new/changed/deleted vs. a locked baseline); a commit
- * records the message + counts at the moment the diff was baselined to locked.
- */
-export interface Commit {
-  id: string
-  message: string
-  /** Unix epoch ms when committed. */
-  at: number
-  /** How many screens were added / changed / removed in this commit. */
-  summary: { added: number; changed: number; removed: number }
-}
-
 export interface ProjectDoc {
   version: number
   name: string
@@ -95,6 +81,4 @@ export interface ProjectDoc {
   flows: Flow[]
   screens: Screen[]
   edges: FlowEdge[]
-  /** Commit history (newest first). Optional for legacy docs. */
-  commits?: Commit[]
 }

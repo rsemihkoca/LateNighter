@@ -6,29 +6,45 @@
 //   treeSpecToDocPatch(entries,d) → import a folder tree back into a doc
 //
 // The folder tree is LOSSY: it captures hierarchy + names but not ids,
-// edges, positions, status or deviceId. Those live in each node's `.md`
-// frontmatter (id/status/meta/position) and in the canonical JSON
+// edges, positions or deviceId. Those live in each node's `.md`
+// frontmatter (id/meta/position) and in the canonical JSON
 // (edges/deviceId/order). The importer therefore reads frontmatter and
 // falls back to `prevDoc` so nothing is destroyed on round-trip.
 // ============================================================
 
 import { docToTree, type TreeNode } from './derive'
 import { slugifyName, uniqueSlug } from './slug'
+import { getSurface, type SurfaceBundle } from '../storage/surfaceStore'
+import { bytesToBase64, isTextAsset, textOf } from '../storage/surfaceImport'
 import type {
   Flow,
   ProjectDoc,
   Screen,
   ScreenState,
-  ScreenStatus,
   ScreenSurface,
+  SurfaceContent,
 } from './types'
 
 // ---- Shared shapes (mirror the Rust commands) ----------------------------
+
+/** A file to write inside a node folder (e.g. preview.png, live/index.html).
+    `name` may contain "/" for a subfolder. Exactly one of text/base64 is set. */
+export interface AssetSpec {
+  name: string
+  text?: string
+  base64?: string
+}
 
 /** A desired node folder: relative "/"-joined path + YAML frontmatter body. */
 export interface FolderSpec {
   path: string
   frontmatter: string
+  /** Binary/text payloads materialized inside the folder (screens only). */
+  assets?: AssetSpec[]
+  /** Managed asset subdirs ("live"/"preview") this save authoritatively owns:
+      their stale contents are pruned to match `assets`. Subdirs NOT listed are
+      left untouched (e.g. before the store is hydrated → no data loss). */
+  managedDirs?: string[]
 }
 
 /** A node folder read back from disk. */
@@ -38,12 +54,70 @@ export interface TreeEntry {
   frontmatter: Record<string, string>
 }
 
-const STATUSES: ScreenStatus[] = ['locked', 'new', 'deleted', 'changed']
-const asStatus = (v: string | undefined): ScreenStatus =>
-  STATUSES.includes(v as ScreenStatus) ? (v as ScreenStatus) : 'new'
 const SURFACES: ScreenSurface[] = ['preview', 'live']
 const asSurface = (v: string | undefined): ScreenSurface =>
   SURFACES.includes(v as ScreenSurface) ? (v as ScreenSurface) : 'preview'
+
+const CONTENTS: SurfaceContent[] = ['image', 'htmlFile', 'htmlFolder']
+const asContent = (v: string | undefined): SurfaceContent | undefined =>
+  CONTENTS.includes(v as SurfaceContent) ? (v as SurfaceContent) : undefined
+
+const IMAGE_EXT: Record<string, string> = {
+  'image/png': 'png',
+  'image/jpeg': 'jpg',
+  'image/webp': 'webp',
+  'image/gif': 'gif',
+  'image/svg+xml': 'svg',
+  'image/avif': 'avif',
+  'image/bmp': 'bmp',
+  'image/x-icon': 'ico',
+}
+
+/** Turn a surface bundle into AssetSpecs under `<prefix>/…` (live/ or preview/). */
+function bundleToSpecs(prefix: string, bundle: SurfaceBundle): AssetSpec[] {
+  const specs: AssetSpec[] = []
+  for (const [rel, asset] of bundle) {
+    const name = `${prefix}/${rel}`
+    if (isTextAsset(asset)) specs.push({ name, text: textOf(asset) })
+    else specs.push({ name, base64: asset.b64 ?? bytesToBase64(asset.bytes) })
+  }
+  return specs
+}
+
+/** Files to materialize under a screen folder: preview.<ext> (image) and the
+    live/ + preview/ html folders (pulled from the surfaceStore by screen id).
+    `managedDirs` marks which html subdirs are authoritative this save. */
+function screenAssets(s: Screen | undefined): { assets: AssetSpec[]; managedDirs: string[] } {
+  const assets: AssetSpec[] = []
+  const managedDirs: string[] = []
+  if (!s) return { assets, managedDirs }
+
+  if (s.previewContent === 'image' && s.previewImage) {
+    // Image is JSON-canonical → always authoritative; also clear any stale preview/ html.
+    const m = /^data:([^;]+);base64,(.*)$/s.exec(s.previewImage)
+    if (m) {
+      const ext = IMAGE_EXT[m[1].toLowerCase()] ?? 'png'
+      assets.push({ name: `preview.${ext}`, base64: m[2] })
+    }
+    managedDirs.push('preview')
+  } else {
+    // Preview HTML/folder — authoritative only when the store holds the bytes.
+    const pv = getSurface(s.id, 'preview')
+    if (pv) {
+      assets.push(...bundleToSpecs('preview', pv.bundle))
+      managedDirs.push('preview')
+    }
+  }
+
+  // Live folder — authoritative only when the store holds the bytes.
+  const lv = getSurface(s.id, 'live')
+  if (lv) {
+    assets.push(...bundleToSpecs('live', lv.bundle))
+    managedDirs.push('live')
+  }
+
+  return { assets, managedDirs }
+}
 
 /** Build a frontmatter body from key/value pairs, skipping empty values. */
 function frontmatter(pairs: [string, string | undefined][]): string {
@@ -66,8 +140,6 @@ export function docToTreeSpec(doc: ProjectDoc): FolderSpec[] {
   const tree = docToTree(doc)
   const flowsById = new Map(doc.flows.map((f) => [f.id, f]))
   const screensById = new Map(doc.screens.map((s) => [s.id, s]))
-  const statesById = new Map<string, ScreenState>()
-  doc.screens.forEach((s) => s.states.forEach((st) => statesById.set(st.id, st)))
 
   const out: FolderSpec[] = []
   // A screen can be referenced by several flows; it can only live in one
@@ -89,6 +161,8 @@ export function docToTreeSpec(doc: ProjectDoc): FolderSpec[] {
     const path = parentPath ? `${parentPath}/${slug}.${kind}` : `${slug}.${kind}`
 
     let fm: string
+    let assets: AssetSpec[] | undefined
+    let managedDirs: string[] | undefined
     if (kind === 'flow') {
       const f = flowsById.get(node.id)
       fm = frontmatter([
@@ -100,20 +174,20 @@ export function docToTreeSpec(doc: ProjectDoc): FolderSpec[] {
       const s = screensById.get(node.id)
       fm = frontmatter([
         ['id', node.id],
-        ['status', s?.status],
         ['surface', s?.surface ?? 'preview'],
+        ['previewContent', s?.previewContent],
+        ['liveContent', s?.liveContent],
         ['meta', s?.meta],
         ['x', s ? String(s.position.x) : undefined],
         ['y', s ? String(s.position.y) : undefined],
       ])
+      const built = screenAssets(s)
+      assets = built.assets.length ? built.assets : undefined
+      managedDirs = built.managedDirs.length ? built.managedDirs : undefined
     } else {
-      const st = statesById.get(node.id)
-      fm = frontmatter([
-        ['id', node.id],
-        ['status', st?.status],
-      ])
+      fm = frontmatter([['id', node.id]])
     }
-    out.push({ path, frontmatter: fm })
+    out.push({ path, frontmatter: fm, assets, managedDirs })
 
     const childTaken = new Set<string>()
     node.children.forEach((child) => visit(child, path, childTaken))
@@ -196,9 +270,12 @@ export function treeSpecToDocPatch(entries: TreeEntry[], prevDoc: ProjectDoc): P
         id: self.id,
         name: slug,
         meta: fm.meta ?? prev?.meta ?? '',
-        status: asStatus(fm.status ?? prev?.status),
         surface: asSurface(fm.surface ?? prev?.surface),
-        liveHtml: prev?.liveHtml,
+        // Surface content markers (bytes live on disk / in the store, keyed by
+        // id, so they survive a folder rename); previewImage data URL from prev.
+        previewContent: asContent(fm.previewContent) ?? prev?.previewContent,
+        liveContent: asContent(fm.liveContent) ?? prev?.liveContent,
+        previewImage: prev?.previewImage,
         position: { x, y },
         states: [],
       }
@@ -210,7 +287,6 @@ export function treeSpecToDocPatch(entries: TreeEntry[], prevDoc: ProjectDoc): P
         const state: ScreenState = {
           id: self.id,
           name: slug,
-          status: asStatus(fm.status),
         }
         screenById.get(parent.id)?.states.push(state)
       }

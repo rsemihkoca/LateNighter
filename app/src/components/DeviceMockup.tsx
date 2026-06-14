@@ -1,17 +1,21 @@
-import type { CSSProperties, ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import { getMockup, type MockupSpec } from './mockups'
 
 // ============================================================
-// DeviceMockup — renders a phone frame straight from the static SVG in
-// assets/mockup (imported as a bundled URL). No status bar / home bar: the
-// SVG is used as-is. The "none" mockup renders a plain blank screen instead
-// of a phone frame. Optional `children` overlay the screen glass.
+// DeviceMockup — a CSS-drawn phone frame, sized from a DeviceSpec (see
+// mockups.ts). No SVG asset: the bezel is the body's uniform padding, the
+// rounded glass is an inner slot that clips `children` to the display corner
+// radius, and the Dynamic Island is a pill sitting on top of the content. A
+// frameless spec ("none") renders a plain rounded screen card.
+//
+// All geometry is derived from the spec at the given `width`, so the same
+// device renders identically anywhere it is mounted.
 // ============================================================
 
 interface DeviceMockupProps {
-  /** Mockup id (see mockups.ts) or a spec. Defaults to "Mockup yok". */
+  /** Device id (see mockups.ts) or a spec. Defaults to the registry's first. */
   mockup?: string | MockupSpec
-  /** Rendered frame width in px; height is derived from the aspect ratio. */
+  /** Rendered frame width in px; height is derived from the body aspect. */
   width?: number
   /** Optional screen content, clipped to the rounded glass. */
   children?: ReactNode
@@ -19,40 +23,49 @@ interface DeviceMockupProps {
 
 export function DeviceMockup({ mockup, width = 280, children }: DeviceMockupProps) {
   const spec = typeof mockup === 'object' ? mockup : getMockup(mockup)
-  const { screen } = spec
-  const height = width / spec.aspect
-  const rootStyle: CSSProperties = { width, height }
+  const { bezelPx, width: glassW } = spec.glassSize(width)
+  const height = spec.frameHeight(width)
+  const glassRadius = glassW * spec.glassRadiusFraction
 
-  // No frame SVG → plain blank screen card.
-  if (!spec.src) {
+  // Frameless → plain rounded screen card.
+  if (spec.frameless) {
     return (
-      <div className="device-mockup device-mockup--none" style={rootStyle}>
-        <div
-          className="device-mockup__blank"
-          style={{ borderRadius: (spec.screenRadius / 100) * width }}
-        >
+      <div className="device-mockup device-mockup--none" style={{ width, height }}>
+        <div className="device-mockup__glass" style={{ borderRadius: glassRadius }}>
           {children}
         </div>
       </div>
     )
   }
 
+  const { island } = spec
+
   return (
-    <div className="device-mockup" style={rootStyle}>
-      <img className="device-mockup__frame" src={spec.src} alt={spec.name} draggable={false} />
-      {children && (
+    <div
+      className="device-mockup"
+      style={{
+        width,
+        height,
+        padding: bezelPx,
+        background: spec.frameColor,
+        // Concentric outer corner: glass radius grown by the bezel.
+        borderRadius: glassRadius + bezelPx,
+      }}
+    >
+      <div className="device-mockup__glass" style={{ borderRadius: glassRadius }}>
+        {children}
+      </div>
+      {island && (
         <div
-          className="device-mockup__screen"
+          className="device-mockup__island"
           style={{
-            top: `${screen.top}%`,
-            left: `${screen.left}%`,
-            right: `${screen.right}%`,
-            bottom: `${screen.bottom}%`,
-            borderRadius: (spec.screenRadius / 100) * width,
+            // Island geometry is in display points → scaled to the glass px.
+            width: glassW * (island.wPt / spec.logicalWidth),
+            height: glassW * (island.hPt / spec.logicalWidth),
+            top: bezelPx + glassW * (island.topPt / spec.logicalWidth),
+            borderRadius: 999,
           }}
-        >
-          {children}
-        </div>
+        />
       )}
     </div>
   )

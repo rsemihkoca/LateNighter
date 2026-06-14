@@ -28,7 +28,7 @@ function writeIndex(entries: IndexEntry[]) {
 
 export const localStorageBackend: ProjectStorage = {
   kind: 'local',
-  label: 'Tarayıcı deposu',
+  label: 'Browser storage',
 
   async listProjects(): Promise<ProjectRef[]> {
     return readIndex().map((e) => ({ ...e, backend: 'local' }))

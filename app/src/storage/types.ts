@@ -17,7 +17,7 @@ export interface ProjectRef {
  */
 export interface ProjectStorage {
   readonly kind: StorageKind
-  /** Human label for the location (folder name, or "Tarayıcı deposu"). */
+  /** Human label for the location (folder name, or "Browser storage"). */
   readonly label: string
   listProjects(): Promise<ProjectRef[]>
   createProject(name: string, doc: ProjectDoc): Promise<ProjectRef>
@@ -31,6 +31,16 @@ export interface ProjectStorage {
   getTreeRevision?(ref: ProjectRef): Promise<number>
   /** Read the mirror folder back into a flat list of node entries. */
   readTree?(ref: ProjectRef): Promise<TreeEntry[]>
+  /** Read screen surface folders (live/ + preview/) back from disk, keyed by
+      the screen id in each `.screen.md` frontmatter (rename-safe). */
+  readSurfaceAssets?(ref: ProjectRef): Promise<SurfaceDiskEntry[]>
+}
+
+/** A screen surface folder read back from disk during hydration. */
+export interface SurfaceDiskEntry {
+  screenId: string
+  surface: 'preview' | 'live'
+  files: { path: string; base64: string }[]
 }
 
 export function slugify(name: string): string {

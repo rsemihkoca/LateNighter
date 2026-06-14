@@ -1,16 +1,20 @@
 // ============================================================
-// Mockup registry — the photoreal phone frames under app/assets/mockup,
-// imported as static (Vite-fingerprinted) URLs so they bundle cleanly.
+// Device factory — a single source of truth for the phone mockups, drawn
+// purely in CSS from REAL device proportions (no SVG asset, no eyeballed
+// insets). Each device is a `DeviceSpec` instance carrying its physical body
+// size, logical point resolution, display corner radius, uniform bezel and
+// Dynamic Island geometry; all render geometry (frame height, glass content
+// box, radii) is *derived* from those numbers so the same spec renders an
+// identical 14 Pro frame at any width, everywhere.
 //
-// Each spec carries the screen-glass insets (% of the frame box) measured
-// from the rendered SVG, so DeviceMockup can overlay the status bar, home
-// indicator and a screen-content slot exactly over the glass at any size.
+// Geometric guarantee: the body is drawn at its physical aspect (bodyW/bodyH)
+// and a UNIFORM bezel is inset on all four sides, so the inner glass lands at
+// the display logical aspect (logicalW/logicalH) automatically. Live HTML laid
+// out at `logicalWidth` and preview images then fill the glass with no
+// distortion — that is the content area renders target.
 // ============================================================
 
 import { GRID_GAP } from '../doc/layout-constants'
-import iphone14 from '../../assets/mockup/iphone14.svg'
-import iphone14Pro from '../../assets/mockup/iphone14Pro.svg'
-import iphone15Pro from '../../assets/mockup/iphone15Pro.svg'
 
 /** Screen-glass insets, each a percentage of the frame box. */
 export interface MockupInset {
@@ -20,78 +24,156 @@ export interface MockupInset {
   left: number
 }
 
-export interface MockupSpec {
+/** Dynamic Island geometry, in display logical points. */
+export interface IslandSpec {
+  wPt: number
+  hPt: number
+  topPt: number
+}
+
+interface DeviceInit {
   id: string
   name: string
-  /** Bundled static URL of the frame SVG. */
-  src: string
-  /** Frame aspect ratio, width / height. */
-  aspect: number
-  /** Screen-glass insets (% of frame box). */
-  screen: MockupInset
-  /** Screen corner radius, % of frame width. */
-  screenRadius: number
-  /** Status-bar band height, % of frame height. */
-  statusBarHeight: number
-  /** Dynamic Island / notch phone → clock sits left, status icons right of the cutout. */
-  island: boolean
+  /** Physical body, mm. */
+  bodyW: number
+  bodyH: number
+  /** Display logical resolution, points (CSS px). */
+  logicalW: number
+  logicalH: number
+  /** Display corner radius, points. */
+  displayRadiusPt: number
+  /** Uniform body-edge → glass inset, mm. 0 = frameless (plain screen card). */
+  bezelMm: number
+  /** Dynamic Island, omitted for notch/frameless devices. */
+  island?: IslandSpec
+  /** Bezel / body fill color. */
+  frameColor?: string
 }
 
-// Insets below were measured from the rasterized mockups (white screen-glass
-// bounding box vs. the bezel), see the screen-area probe in git history.
-// The "none" entry is the default: no phone frame, just a plain screen card.
-export const MOCKUPS: MockupSpec[] = [
-  {
-    id: 'none',
-    name: 'Mockup yok',
-    src: '',
-    aspect: 360 / 730,
-    screen: { top: 0, right: 0, bottom: 0, left: 0 },
-    screenRadius: 8,
-    statusBarHeight: 0,
-    island: false,
-  },
-  {
-    id: 'iphone-15-pro',
-    name: 'iPhone 15 Pro',
-    src: iphone15Pro,
-    aspect: 356 / 730,
-    screen: { top: 2.0, right: 4.7, bottom: 2.1, left: 4.5 },
-    screenRadius: 13,
-    statusBarHeight: 5.4,
-    island: true,
-  },
-  {
-    id: 'iphone-14-pro',
-    name: 'iPhone 14 Pro',
-    src: iphone14Pro,
-    aspect: 360 / 730,
-    screen: { top: 2.3, right: 5.6, bottom: 2.4, left: 5.4 },
-    screenRadius: 12,
-    statusBarHeight: 5.4,
-    island: true,
-  },
-  {
-    id: 'iphone-14',
-    name: 'iPhone 14',
-    src: iphone14,
-    aspect: 363 / 730,
-    screen: { top: 2.4, right: 5.9, bottom: 2.5, left: 5.8 },
-    screenRadius: 12,
-    statusBarHeight: 5.4,
-    island: true,
-  },
-]
+// Real device numbers in, derived render geometry out. Holding the spec in a
+// class keeps device facts in one place and the math co-located with them.
+export class DeviceSpec {
+  private readonly init: DeviceInit
 
-/** Default selection — no phone frame. */
-export const DEFAULT_MOCKUP_ID = MOCKUPS[0].id
+  constructor(init: DeviceInit) {
+    this.init = init
+  }
 
-const BY_ID = new Map(MOCKUPS.map((m) => [m.id, m]))
-
-/** Resolve a mockup by id, falling back to the default ("Mockup yok"). */
-export function getMockup(id: string | undefined): MockupSpec {
-  return (id && BY_ID.get(id)) || MOCKUPS[0]
+  get id() {
+    return this.init.id
+  }
+  get name() {
+    return this.init.name
+  }
+  /** Display logical width, points — the width a live page is laid out at. */
+  get logicalWidth() {
+    return this.init.logicalW
+  }
+  get logicalHeight() {
+    return this.init.logicalH
+  }
+  /** Frame body aspect, width / height — drives the on-canvas card footprint. */
+  get aspect() {
+    return this.init.bodyW / this.init.bodyH
+  }
+  /** Display/glass aspect, width / height. */
+  get glassAspect() {
+    return this.init.logicalW / this.init.logicalH
+  }
+  get frameColor() {
+    return this.init.frameColor ?? '#0b0b0d'
+  }
+  /** No frame → render a plain rounded screen card. */
+  get frameless() {
+    return this.init.bezelMm === 0
+  }
+  get island(): IslandSpec | undefined {
+    return this.init.island
+  }
+  /** Uniform bezel as a fraction of frame width. */
+  get bezelFraction() {
+    return this.init.bezelMm / this.init.bodyW
+  }
+  /** Display corner radius as a fraction of glass width (≈0.14 for 14 Pro). */
+  get glassRadiusFraction() {
+    return this.init.displayRadiusPt / this.init.logicalW
+  }
+  /** Back-compat: screen-glass insets as % of the frame box. */
+  get screen(): MockupInset {
+    const bx = this.bezelFraction * 100
+    const by = (this.init.bezelMm / this.init.bodyH) * 100
+    return { top: by, right: bx, bottom: by, left: bx }
+  }
+  /** Back-compat: screen corner radius as % of frame width. */
+  get screenRadius() {
+    return this.glassRadiusFraction * (1 - 2 * this.bezelFraction) * 100
+  }
+  /** Frame outer height, px, for a given render width. */
+  frameHeight(width: number) {
+    return width / this.aspect
+  }
+  /**
+   * The content area: the glass pixel box for a rendered frame width. The
+   * uniform bezel makes the result land at the display aspect, so preview
+   * images and the live iframe fill it with no distortion.
+   */
+  glassSize(width: number) {
+    const bezelPx = this.bezelFraction * width
+    return {
+      bezelPx,
+      width: width - 2 * bezelPx,
+      height: this.frameHeight(width) - 2 * bezelPx,
+    }
+  }
 }
+
+// iPhone 14 Pro — the primary/default device. Numbers are the real specs:
+// body 71.5×147.5 mm, logical 393×852 pt, 55 pt display corner radius, ~3.2 mm
+// uniform bezel (chosen so the glass lands at the 393:852 display aspect), and
+// an approximate Dynamic Island (Apple never published exact figures).
+const IPHONE_14_PRO = new DeviceSpec({
+  id: 'iphone-14-pro',
+  name: 'iPhone 14 Pro',
+  bodyW: 71.5,
+  bodyH: 147.5,
+  logicalW: 393,
+  logicalH: 852,
+  displayRadiusPt: 55,
+  bezelMm: 3.2,
+  island: { wPt: 125, hPt: 37, topPt: 11 },
+  frameColor: '#0b0b0d',
+})
+
+// Frameless fallback — a plain rounded screen card, no phone chrome.
+const NONE = new DeviceSpec({
+  id: 'none',
+  name: 'No mockup',
+  bodyW: 360,
+  bodyH: 730,
+  logicalW: 360,
+  logicalH: 730,
+  displayRadiusPt: 16,
+  bezelMm: 0,
+})
+
+/** The device registry — add new devices here as DeviceSpec instances. */
+export const DEVICES: DeviceSpec[] = [IPHONE_14_PRO, NONE]
+
+/** Default selection — the iPhone 14 Pro frame. */
+export const DEFAULT_DEVICE_ID = 'iphone-14-pro'
+
+const BY_ID = new Map(DEVICES.map((d) => [d.id, d]))
+
+/** Resolve a device by id, falling back to the first (14 Pro). */
+export function getDevice(id: string | undefined): DeviceSpec {
+  return (id && BY_ID.get(id)) || DEVICES[0]
+}
+
+// ---- Back-compat aliases so existing consumers compile unchanged ----
+export type MockupSpec = DeviceSpec
+export const MOCKUPS = DEVICES
+export const getMockup = getDevice
+export const DEFAULT_MOCKUP_ID = DEFAULT_DEVICE_ID
 
 // ============================================================
 // Card geometry — the ScreenCard wrapper that turns a mockup into the node.

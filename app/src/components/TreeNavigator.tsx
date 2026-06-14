@@ -4,8 +4,9 @@ import {
   useMemo,
   useRef,
   useState,
-  type CSSProperties,
+  type DragEvent,
   type KeyboardEvent,
+  type MouseEvent,
 } from 'react'
 import {
   ChevronRight,
@@ -14,14 +15,14 @@ import {
   Monitor,
   Circle,
   CornerUpRight,
-  FilePlus,
-  FolderPlus,
-  RefreshCw,
-  ChevronsDownUp,
+  GitBranchPlus,
+  PanelTopOpen,
+  CirclePlus,
+  Unlink,
+  type LucideIcon,
 } from 'lucide-react'
 import { useDoc } from '../doc/DocContext'
 import { docToTree, type TreeKind, type TreeNode } from '../doc/derive'
-import type { ScreenStatus } from '../doc/types'
 
 /* ─────────────────────────────────────────────────────────────
    Data layer. In the reference this was a mock filesystem + async
@@ -36,7 +37,6 @@ interface NodeMeta {
   isDir: boolean
   /** Screen this row navigates to when clicked (screen rows + link/state rows). */
   screenId?: string
-  status?: ScreenStatus
 }
 
 function buildMaps(root: TreeNode) {
@@ -49,7 +49,6 @@ function buildMaps(root: TreeNode) {
       kind: node.kind,
       isDir: node.children.length > 0,
       screenId: node.kind === 'screen' ? node.id : node.screenId,
-      status: node.status,
     })
     kids.set(node.id, node.children.map((c) => c.id))
     node.children.forEach(visit)
@@ -81,13 +80,6 @@ const STEP = 14 // indentation added per nesting level
 const ROW_H = 22
 
 const RENAMABLE: TreeKind[] = ['flow', 'screen', 'state']
-
-const STATUS_COLOR: Record<ScreenStatus, string | undefined> = {
-  locked: 'var(--text-faint)',
-  new: 'var(--green)',
-  changed: 'var(--amber)',
-  deleted: 'var(--red)',
-}
 
 /** Explorer label = "<name>.<kind>" for real nodes, raw label otherwise. */
 function displayLabel(kind: TreeKind, name: string): string {
@@ -126,6 +118,17 @@ interface VisibleRow {
   parents: string[]
 }
 
+interface TreeAction {
+  icon: LucideIcon
+  title: string
+  tone: 'flow' | 'screen' | 'state' | 'link'
+  action: () => void
+}
+
+/** A link tree-node id is `link:<edgeId>` (see derive.ts). */
+const edgeIdOf = (linkNodeId: string) =>
+  linkNodeId.startsWith('link:') ? linkNodeId.slice('link:'.length) : null
+
 export function TreeNavigator() {
   const {
     doc,
@@ -140,6 +143,11 @@ export function TreeNavigator() {
     addState,
     renameState,
     removeState,
+    reorderScreen,
+    moveState,
+    moveFlow,
+    connectScreens,
+    removeEdges,
     syncKey,
   } = useDoc()
 
@@ -197,8 +205,13 @@ export function TreeNavigator() {
   // (e.g. clicking a node on the canvas) and default it to the first row.
   useEffect(() => {
     if (selectedScreenId) {
-      // Prefer the screen's own node over link/state rows that share its
-      // screenId (a link row usually renders before its target screen).
+      // If the focused row already represents this screen (its own node, or a
+      // link/state row pointing at it — e.g. the user just clicked a link),
+      // leave focus put. Otherwise (external canvas selection) move to it.
+      const focusedMeta = focused ? meta.get(focused) : undefined
+      const alreadyOnScreen =
+        focused === selectedScreenId || focusedMeta?.screenId === selectedScreenId
+      if (alreadyOnScreen) return
       const match =
         visible.find((v) => v.id === selectedScreenId) ??
         visible.find((v) => meta.get(v.id)?.screenId === selectedScreenId)
@@ -245,6 +258,15 @@ export function TreeNavigator() {
     [meta, renameScreen, renameFlow, renameState],
   )
 
+  // Delete a single relationship (edge) — the tree shows it as a `link` node.
+  const removeLink = useCallback(
+    (linkNodeId: string) => {
+      const edgeId = edgeIdOf(linkNodeId)
+      if (edgeId) removeEdges([edgeId])
+    },
+    [removeEdges],
+  )
+
   const removeNode = useCallback(
     (id: string) => {
       const m = meta.get(id)
@@ -252,11 +274,13 @@ export function TreeNavigator() {
       if (m.kind === 'screen') removeScreen(id)
       else if (m.kind === 'flow') removeFlow(id)
       else if (m.kind === 'state') removeState(id)
+      else if (m.kind === 'link') removeLink(id)
     },
-    [meta, removeScreen, removeFlow, removeState],
+    [meta, removeScreen, removeFlow, removeState, removeLink],
   )
 
-  const startRename = (id: string) => {
+  const startRename = (id: string, event: MouseEvent<HTMLDivElement>) => {
+    if (event.button !== 0 || event.detail !== 2) return
     if (RENAMABLE.includes(meta.get(id)?.kind as TreeKind)) setRenaming(id)
   }
 
@@ -265,17 +289,21 @@ export function TreeNavigator() {
     const idx = visible.findIndex((v) => v.id === focused)
     const cur = visible[idx]
     const isDir = (id: string) => (kids.get(id)?.length ?? 0) > 0
+    const consume = () => {
+      e.preventDefault()
+      e.stopPropagation()
+    }
 
     if (e.key === 'ArrowDown') {
-      e.preventDefault()
+      consume()
       const n = visible[Math.min(idx + 1, visible.length - 1)]
       if (n) setFocused(n.id)
     } else if (e.key === 'ArrowUp') {
-      e.preventDefault()
+      consume()
       const n = visible[Math.max(idx - 1, 0)]
       if (n) setFocused(n.id)
     } else if (e.key === 'ArrowRight') {
-      e.preventDefault()
+      consume()
       if (!cur) return
       if (isDir(cur.id)) {
         if (!expanded.has(cur.id)) toggle(cur.id)
@@ -285,46 +313,222 @@ export function TreeNavigator() {
         }
       }
     } else if (e.key === 'ArrowLeft') {
-      e.preventDefault()
+      consume()
       if (!cur) return
       if (isDir(cur.id) && expanded.has(cur.id)) toggle(cur.id)
       else if (cur.level > 0) setFocused(cur.parents[cur.level - 1])
     } else if (e.key === 'Enter') {
-      e.preventDefault()
+      consume()
       if (cur) activate(cur.id)
-    } else if (e.key === 'F2') {
-      e.preventDefault()
-      if (focused) startRename(focused)
     } else if (e.key === 'Delete' || e.key === 'Backspace') {
-      e.preventDefault()
+      consume()
       if (focused) removeNode(focused)
     }
   }
 
-  // VS Code-style "new" buttons: create inside the focused container.
-  const addItem = () => {
-    const m = focused ? meta.get(focused) : undefined
-    if (m?.kind === 'flow') addScreen({ flowId: focused! })
-    else if (m?.kind === 'screen') addState(focused!)
-    else if (m?.kind === 'state' && m.screenId) addState(m.screenId)
-    else addScreen()
+  const expandNode = useCallback((id: string) => {
+    setExpanded((prev) => {
+      const next = new Set(prev)
+      next.add(id)
+      return next
+    })
+  }, [])
+
+  const addProjectFlow = useCallback(() => {
+    expandNode(ROOT)
+    addFlow()
+  }, [addFlow, expandNode, ROOT])
+
+  const addScreenToFlow = useCallback(
+    (flowId: string) => {
+      expandNode(flowId)
+      addScreen({ flowId })
+    },
+    [addScreen, expandNode],
+  )
+
+  const addFlowToScreen = useCallback(
+    (screenId: string) => {
+      expandNode(screenId)
+      selectScreen(screenId)
+      addFlow({ screenId })
+    },
+    [addFlow, expandNode, selectScreen],
+  )
+
+  const addStateToScreen = useCallback(
+    (screenId: string) => {
+      expandNode(screenId)
+      selectScreen(screenId)
+      addState(screenId)
+    },
+    [addState, expandNode, selectScreen],
+  )
+
+  const actionsForRow = useCallback(
+    (id: string, kind: TreeKind): TreeAction[] => {
+      if (kind === 'flow') {
+        return [
+          {
+            icon: PanelTopOpen,
+            title: 'Add screen to this flow',
+            tone: 'screen',
+            action: () => addScreenToFlow(id),
+          },
+        ]
+      }
+      if (kind === 'screen') {
+        return [
+          {
+            icon: GitBranchPlus,
+            title: 'Add flow from this screen',
+            tone: 'flow',
+            action: () => addFlowToScreen(id),
+          },
+          {
+            icon: CirclePlus,
+            title: 'Add state to this screen',
+            tone: 'state',
+            action: () => addStateToScreen(id),
+          },
+        ]
+      }
+      if (kind === 'link') {
+        return [
+          {
+            icon: Unlink,
+            title: 'Remove connection',
+            tone: 'link',
+            action: () => removeLink(id),
+          },
+        ]
+      }
+      return []
+    },
+    [addFlowToScreen, addScreenToFlow, addStateToScreen, removeLink],
+  )
+
+  const projectActions: TreeAction[] = [
+    { icon: GitBranchPlus, title: 'Add flow', tone: 'flow', action: addProjectFlow },
+  ]
+
+  // -------- Drag & drop ----------------------------------------------------
+  // Reorder/move screens, states and flows by dragging rows. Order lives in the
+  // doc (flow.screenIds / screen.states / doc.flows), so a drop maps to a
+  // move* mutation; the folder mirror preserves the new order on round-trip.
+  type DropZone = 'before' | 'after' | 'inside'
+  const [dragId, setDragId] = useState<string | null>(null)
+  const [dropAt, setDropAt] = useState<{ id: string; zone: DropZone } | null>(null)
+
+  // id → immediate parent id (from the flattened tree). A node id is unique in
+  // the visible list, so this is well-defined.
+  const parentOf = useMemo(() => {
+    const map = new Map<string, string | null>()
+    for (const v of visible) map.set(v.id, v.level > 0 ? v.parents[v.level - 1] : null)
+    return map
+  }, [visible])
+
+  const DRAGGABLE: TreeKind[] = ['flow', 'screen', 'state']
+  const kindOf = (id: string) => meta.get(id)?.kind
+  // True if `node` sits inside `ancestor`'s subtree (walks the parent chain).
+  const isUnder = (node: string, ancestor: string) => {
+    let cur = parentOf.get(node) ?? null
+    const seen = new Set<string>()
+    while (cur && !seen.has(cur)) {
+      if (cur === ancestor) return true
+      seen.add(cur)
+      cur = parentOf.get(cur) ?? null
+    }
+    return false
   }
-  const addContainer = () => {
-    const m = focused ? meta.get(focused) : undefined
-    if (m?.kind === 'screen') addFlow({ screenId: focused! })
-    else if (m?.kind === 'flow') addFlow({ flowId: focused! })
-    else addFlow()
+  const acceptsInside = (dk?: TreeKind, tk?: TreeKind) =>
+    (dk === 'screen' && (tk === 'flow' || tk === 'screen')) || // into a flow, or connect to a screen
+    (dk === 'state' && tk === 'screen') ||
+    (dk === 'flow' && (tk === 'flow' || tk === 'screen'))
+  const acceptsSibling = (dk?: TreeKind, tk?: TreeKind) => dk === tk // screen↔screen, state↔state, flow↔flow
+
+  // Where a hover lands on the target row, or null if the drop is invalid.
+  const zoneFor = (e: DragEvent<HTMLDivElement>, targetId: string): DropZone | null => {
+    if (!dragId || dragId === targetId) return null
+    if (isUnder(targetId, dragId)) return null // can't drop into own subtree
+    const dk = kindOf(dragId)
+    const tk = kindOf(targetId)
+    const inside = acceptsInside(dk, tk)
+    const sibling = acceptsSibling(dk, tk)
+    if (!inside && !sibling) return null
+    const rect = e.currentTarget.getBoundingClientRect()
+    const y = e.clientY - rect.top
+    const h = rect.height || ROW_H
+    if (inside && sibling) return y < h * 0.27 ? 'before' : y > h * 0.73 ? 'after' : 'inside'
+    if (inside) return 'inside'
+    return y < h * 0.5 ? 'before' : 'after'
   }
 
-  const refresh = () => setExpanded(new Set(initialExpanded))
-  const collapseAll = () => setExpanded(new Set([ROOT]))
+  const performDrop = (target: string, zone: DropZone) => {
+    if (!dragId) return
+    const dk = kindOf(dragId)
+    const tk = kindOf(target)
+    // Dropping "inside" a container should reveal where the node landed.
+    if (zone === 'inside') expandNode(target)
+    if (dk === 'screen') {
+      if (tk === 'screen' && zone === 'inside') {
+        // Drop a screen onto a screen → connect them (edge target → dragged),
+        // which shows as a link under the target screen.
+        connectScreens(target, dragId)
+      } else if (tk === 'screen' && zone !== 'inside') {
+        const pid = parentOf.get(target)
+        const toFlow = pid && kindOf(pid) === 'flow' ? pid : null
+        reorderScreen(dragId, toFlow, target, zone)
+      } else if (tk === 'flow' && zone === 'inside') {
+        reorderScreen(dragId, target, null, 'after')
+      }
+    } else if (dk === 'state') {
+      if (tk === 'state' && zone !== 'inside') {
+        const pid = parentOf.get(target)
+        if (pid && kindOf(pid) === 'screen') moveState(dragId, pid, target, zone)
+      } else if (tk === 'screen' && zone === 'inside') {
+        moveState(dragId, target, null, 'after')
+      }
+    } else if (dk === 'flow') {
+      if (tk === 'flow' && zone !== 'inside') {
+        const pid = parentOf.get(target)
+        const pk = pid ? kindOf(pid) : null
+        const parent =
+          pk === 'flow' ? { flowId: pid! } : pk === 'screen' ? { screenId: pid! } : null
+        moveFlow(dragId, parent, target, zone)
+      } else if (tk === 'flow' && zone === 'inside') {
+        moveFlow(dragId, { flowId: target }, null, 'after')
+      } else if (tk === 'screen' && zone === 'inside') {
+        moveFlow(dragId, { screenId: target }, null, 'after')
+      }
+    }
+  }
 
-  const toolStyle: CSSProperties = {
-    padding: 4,
-    borderRadius: 4,
-    color: T.fg,
-    display: 'flex',
-    cursor: 'pointer',
+  const onRowDragStart = (e: DragEvent<HTMLDivElement>, id: string) => {
+    setDragId(id)
+    e.dataTransfer.effectAllowed = 'move'
+    e.dataTransfer.setData('text/plain', id)
+  }
+  const onRowDragOver = (e: DragEvent<HTMLDivElement>, id: string) => {
+    const zone = zoneFor(e, id)
+    if (!zone) {
+      if (dropAt) setDropAt(null)
+      return
+    }
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+    if (dropAt?.id !== id || dropAt.zone !== zone) setDropAt({ id, zone })
+  }
+  const onRowDrop = (e: DragEvent<HTMLDivElement>, id: string) => {
+    e.preventDefault()
+    const zone = dropAt?.id === id ? dropAt.zone : zoneFor(e, id)
+    if (zone) performDrop(id, zone)
+    setDragId(null)
+    setDropAt(null)
+  }
+  const endDrag = () => {
+    setDragId(null)
+    setDropAt(null)
   }
 
   return (
@@ -345,8 +549,62 @@ export function TreeNavigator() {
         .ce-scroll::-webkit-scrollbar-thumb:hover { background: color-mix(in srgb, var(--text-muted) 46%, transparent); }
         .ce-scroll:focus { outline: none; }
         .ce-row:hover { background: ${T.rowHover}; }
-        .ce-header:hover .ce-tools { opacity: 1; }
-        .ce-tool:hover { background: color-mix(in srgb, var(--text-strong) 12%, transparent); }
+        .ce-header:hover .ce-tools,
+        .ce-header:focus-within .ce-tools,
+        .ce-row:hover .ce-row-tools,
+        .ce-row:focus-within .ce-row-tools,
+        .ce-row.is-selected .ce-row-tools { opacity: 1; }
+        .ce-tools { opacity: .74; transition: opacity .12s ease; }
+        .ce-row-tools {
+          display: inline-flex;
+          align-items: center;
+          gap: 1px;
+          margin-left: 6px;
+          opacity: 0;
+          transition: opacity .12s ease;
+        }
+        .ce-tool,
+        .ce-row-tool {
+          position: relative;
+          width: 22px;
+          height: 22px;
+          padding: 0;
+          border: 0;
+          border-radius: 4px;
+          color: ${T.fg};
+          background: transparent;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
+        }
+        .ce-row-tool {
+          width: 20px;
+          height: 20px;
+          color: var(--text-muted);
+        }
+        .ce-tool:hover,
+        .ce-row-tool:hover {
+          background: color-mix(in srgb, var(--text-strong) 12%, transparent);
+          color: var(--text-strong);
+        }
+        .ce-tool--flow,
+        .ce-row-tool--flow {
+          color: var(--accent);
+        }
+        .ce-row-tool--screen {
+          color: var(--blue);
+        }
+        .ce-row-tool--state {
+          color: var(--green);
+        }
+        .ce-row-tool--link {
+          color: var(--purple);
+        }
+        .ce-row-tool--link:hover {
+          color: var(--red);
+          background: color-mix(in srgb, var(--red) 14%, transparent);
+        }
       `}</style>
 
       {/* Explorer panel */}
@@ -369,25 +627,21 @@ export function TreeNavigator() {
           <span style={{ flex: 1, fontSize: 11, fontWeight: 700, letterSpacing: '.06em', color: T.headerFg, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {nameOf(ROOT).toUpperCase()}
           </span>
-          <div className="ce-tools" style={{ display: 'flex', gap: 2, opacity: 0, transition: 'opacity .12s' }}>
-            {[
-              { icon: FilePlus, t: 'Yeni öğe', a: addItem },
-              { icon: FolderPlus, t: 'Yeni akış', a: addContainer },
-              { icon: RefreshCw, t: 'Yenile', a: refresh },
-              { icon: ChevronsDownUp, t: 'Tümünü kapat', a: collapseAll },
-            ].map(({ icon: Icon, t, a }) => (
-              <div
-                key={t}
-                title={t}
-                className="ce-tool"
-                style={toolStyle}
+          <div className="ce-tools" style={{ display: 'flex', gap: 2 }}>
+            {projectActions.map(({ icon: Icon, title, action, tone }) => (
+              <button
+                key={title}
+                type="button"
+                title={title}
+                aria-label={title}
+                className={`ce-tool ce-tool--${tone}`}
                 onClick={(e) => {
                   e.stopPropagation()
-                  a()
+                  action()
                 }}
               >
-                <Icon size={15} strokeWidth={1.5} />
-              </div>
+                <Icon size={16} strokeWidth={1.65} />
+              </button>
             ))}
           </div>
         </div>
@@ -406,15 +660,24 @@ export function TreeNavigator() {
               const isDir = (kids.get(id)?.length ?? 0) > 0
               const isOpen = expanded.has(id)
               const isSel = focused === id
-              const statusColor = m.status ? STATUS_COLOR[m.status] : undefined
-              const labelColor = isSel ? '#fff' : statusColor ?? T.fg
+              const labelColor = isSel ? '#fff' : T.fg
+              const rowActions = actionsForRow(id, m.kind)
+              const insideHere = dropAt?.id === id && dropAt.zone === 'inside'
+              const lineHere =
+                dropAt?.id === id && dropAt.zone !== 'inside' ? dropAt.zone : null
+              const isDragging = dragId === id
               return (
                 <div
                   key={id}
                   ref={(el) => {
                     rowEls.current[id] = el
                   }}
-                  className="ce-row"
+                  className={`ce-row${isSel ? ' is-selected' : ''}${rowActions.length ? ' has-actions' : ''}`}
+                  draggable={DRAGGABLE.includes(m.kind) && renaming !== id}
+                  onDragStart={(e) => onRowDragStart(e, id)}
+                  onDragOver={(e) => onRowDragOver(e, id)}
+                  onDrop={(e) => onRowDrop(e, id)}
+                  onDragEnd={endDrag}
                   style={{
                     position: 'relative',
                     height: ROW_H,
@@ -427,11 +690,32 @@ export function TreeNavigator() {
                     fontSize: 13,
                     whiteSpace: 'nowrap',
                     color: labelColor,
-                    background: isSel ? T.selActive : undefined,
+                    opacity: isDragging ? 0.5 : undefined,
+                    boxShadow: insideHere ? 'inset 0 0 0 1px var(--accent)' : undefined,
+                    background: insideHere
+                      ? 'color-mix(in srgb, var(--accent) 16%, transparent)'
+                      : isSel
+                        ? T.selActive
+                        : undefined,
                   }}
                   onClick={() => activate(id)}
-                  onDoubleClick={() => startRename(id)}
+                  onDoubleClick={(event) => startRename(id, event)}
                 >
+                  {lineHere && (
+                    <span
+                      style={{
+                        position: 'absolute',
+                        left: BASE + level * STEP,
+                        right: 6,
+                        height: 2,
+                        borderRadius: 2,
+                        background: 'var(--accent)',
+                        pointerEvents: 'none',
+                        top: lineHere === 'before' ? -1 : undefined,
+                        bottom: lineHere === 'after' ? -1 : undefined,
+                      }}
+                    />
+                  )}
                   {/* indent guides */}
                   {Array.from({ length: level }).map((_, c) => {
                     const active = c === fLevel - 1 && fAncestor && parents[c] === fAncestor
@@ -501,27 +785,34 @@ export function TreeNavigator() {
                     <span
                       style={{
                         minWidth: 0,
+                        flex: '1 1 auto',
                         overflow: 'hidden',
                         textOverflow: 'ellipsis',
-                        textDecoration: m.status === 'deleted' ? 'line-through' : undefined,
                       }}
                     >
                       {displayLabel(m.kind, m.name)}
                     </span>
                   )}
 
-                  {/* status dot — pinned to the row's far right (auto margin) */}
-                  {statusColor && !isSel && (
-                    <span
-                      style={{
-                        width: 6,
-                        height: 6,
-                        borderRadius: '50%',
-                        marginLeft: 'auto',
-                        flexShrink: 0,
-                        background: statusColor,
-                      }}
-                    />
+                  {rowActions.length > 0 && (
+                    <div className="ce-row-tools">
+                      {rowActions.map(({ icon: Icon, title, action, tone }) => (
+                        <button
+                          key={title}
+                          type="button"
+                          title={title}
+                          aria-label={title}
+                          className={`ce-row-tool ce-row-tool--${tone}`}
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            action()
+                          }}
+                          onDoubleClick={(event) => event.stopPropagation()}
+                        >
+                          <Icon size={15} strokeWidth={1.7} />
+                        </button>
+                      ))}
+                    </div>
                   )}
                 </div>
               )

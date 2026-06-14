@@ -6,17 +6,24 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
 } from 'react'
 import type { ProjectRef, ProjectStorage } from '../storage/types'
 import { slugifyName } from './slug'
 import { treeSpecToDocPatch } from './treeSync'
+import {
+  getRevision as getSurfaceRevision,
+  getSurfaceHtml,
+  hydrateSurfaces,
+  setSurface,
+  subscribe as subscribeSurfaces,
+  type SurfaceBundle,
+} from '../storage/surfaceStore'
 import type {
-  Commit,
   Flow,
   ProjectDoc,
   Screen,
   ScreenState,
-  ScreenStatus,
   ScreenSurface,
   XY,
 } from './types'
@@ -44,12 +51,32 @@ interface DocContextValue {
   removeScreens: (ids: string[]) => void
   addScreen: (parent?: { flowId: string }, options?: { surface?: ScreenSurface }) => void
   renameScreen: (id: string, name: string) => void
-  setScreenStatus: (id: string, status: ScreenStatus) => void
-  /** Baseline the design diff: new/changed → locked, deleted screens removed,
-      and record a commit. No-op when there are no pending changes. */
-  commitChanges: (message: string) => void
+  /** Drag-and-drop reorders (Explorer). `ref`+position insert against the
+      target container AFTER the dragged node is removed, so same-container
+      reorder is off-by-one-safe. */
+  reorderScreen: (
+    screenId: string,
+    toFlowId: string | null,
+    refScreenId: string | null,
+    position: 'before' | 'after',
+  ) => void
+  moveState: (
+    stateId: string,
+    toScreenId: string,
+    refStateId: string | null,
+    position: 'before' | 'after',
+  ) => void
+  moveFlow: (
+    flowId: string,
+    parent: { flowId: string } | { screenId: string } | null,
+    refFlowId: string | null,
+    position: 'before' | 'after',
+  ) => void
   setScreenSurface: (id: string, surface: ScreenSurface) => void
-  setScreenLiveHtml: (id: string, liveHtml: string) => void
+  setScreenLiveContent: (id: string, bundle: SurfaceBundle, kind: 'htmlFile' | 'htmlFolder') => void
+  setScreenPreviewImage: (id: string, previewImage: string) => void
+  /** Inlined HTML for a screen surface (from the surfaceStore), for the iframe. */
+  getRenderHtml: (id: string, surface: ScreenSurface) => string | undefined
   removeScreen: (id: string) => void
   /** Explorer flow ops. parent: under a screen (launch) or a flow (nest), or top-level. */
   addFlow: (parent?: { flowId: string } | { screenId: string }) => void
@@ -77,6 +104,24 @@ const POLL_INTERVAL = 1500
 
 const serialize = (doc: ProjectDoc) => JSON.stringify(doc, null, 2)
 
+/** True if `ancestorId` is `flowId` itself or one of its ancestors (walking up
+ *  parentFlowId / startsFromScreenId). Used to reject cyclic flow nesting. */
+function flowIsAncestor(doc: ProjectDoc, ancestorId: string, flowId: string): boolean {
+  const byId = new Map(doc.flows.map((f) => [f.id, f]))
+  let cur = byId.get(flowId)
+  const seen = new Set<string>()
+  while (cur && !seen.has(cur.id)) {
+    if (cur.id === ancestorId) return true
+    seen.add(cur.id)
+    if (cur.parentFlowId) cur = byId.get(cur.parentFlowId)
+    else if (cur.startsFromScreenId) {
+      const owner = doc.flows.find((f) => f.screenIds.includes(cur!.startsFromScreenId!))
+      cur = owner
+    } else cur = undefined
+  }
+  return false
+}
+
 function uniqueEdgeId(doc: ProjectDoc, source: string, target: string) {
   const taken = new Set(doc.edges.map((e) => e.id))
   const base = `e-${source}-${target}`
@@ -101,6 +146,8 @@ export function DocProvider({
   const [saveState, setSaveState] = useState<SaveState>('saved')
   const [syncKey, setSyncKey] = useState(0)
   const [selectedScreenId, setSelectedScreenId] = useState<string | null>(null)
+  // Re-render when on-disk surface bytes load/change (they live outside the doc).
+  const surfaceRevision = useSyncExternalStore(subscribeSurfaces, getSurfaceRevision)
 
   const docRef = useRef(doc)
   useEffect(() => {
@@ -112,12 +159,22 @@ export function DocProvider({
   const lastTreeRev = useRef(0)
   const dirty = useRef(false)
   const saveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  // Block saves until the surface store is hydrated from disk: saving earlier
+  // would re-materialize from an empty store and a path-changing edit (e.g.
+  // rename-on-open) would prune the old folder before its bytes loaded → data
+  // loss. No hydration backend (web) → already hydrated.
+  const hydrated = useRef(!storage.readSurfaceAssets)
 
   const scheduleSave = useCallback(() => {
     dirty.current = true
     setSaveState('dirty')
     clearTimeout(saveTimer.current)
-    saveTimer.current = setTimeout(async () => {
+    const run = async () => {
+      if (!hydrated.current) {
+        // Surface bytes not loaded yet — defer rather than materialize blind.
+        saveTimer.current = setTimeout(run, SAVE_DEBOUNCE)
+        return
+      }
       const current = docRef.current
       const json = serialize(current)
       setSaveState('saving')
@@ -134,7 +191,8 @@ export function DocProvider({
         console.error('LateNighter: save failed', e)
         setSaveState('error')
       }
-    }, SAVE_DEBOUNCE)
+    }
+    saveTimer.current = setTimeout(run, SAVE_DEBOUNCE)
   }, [storage, ref])
 
   // Baseline the revision tokens on open. If the mirror folder doesn't exist
@@ -156,6 +214,30 @@ export function DocProvider({
       active = false
     }
   }, [storage, ref, scheduleSave])
+
+  // Hydrate the surface store from disk on open: html/folder bytes aren't in the
+  // doc JSON, so load them back (keyed by screen id → rename-safe) for rendering
+  // and faithful re-materialization on the next save.
+  useEffect(() => {
+    if (!storage.readSurfaceAssets) return
+    let active = true
+    hydrated.current = false
+    ;(async () => {
+      try {
+        const entries = await storage.readSurfaceAssets!(ref)
+        if (active) hydrateSurfaces(entries)
+      } catch (e) {
+        console.error('LateNighter: readSurfaceAssets failed', e)
+      } finally {
+        // Mark hydrated even on failure: better to save (possibly pruning a
+        // genuinely-absent folder) than to wedge saving forever.
+        if (active) hydrated.current = true
+      }
+    })()
+    return () => {
+      active = false
+    }
+  }, [storage, ref])
 
   const mutate = useCallback(
     (fn: (d: ProjectDoc) => ProjectDoc, structural = false) => {
@@ -243,19 +325,6 @@ export function DocProvider({
     [mutate],
   )
 
-  const setScreenStatus = useCallback(
-    (id: string, status: ScreenStatus) => {
-      mutate(
-        (d) => ({
-          ...d,
-          screens: d.screens.map((s) => (s.id === id ? { ...s, status } : s)),
-        }),
-        true,
-      )
-    },
-    [mutate],
-  )
-
   const removeScreen = useCallback(
     (id: string) => {
       removeScreens([id])
@@ -263,51 +332,94 @@ export function DocProvider({
     [removeScreens],
   )
 
-  const commitChanges = useCallback(
-    (message: string) => {
+  const reorderScreen = useCallback(
+    (
+      screenId: string,
+      toFlowId: string | null,
+      refScreenId: string | null,
+      position: 'before' | 'after',
+    ) => {
       mutate((d) => {
-        const pending = d.screens.filter((s) => s.status !== 'locked')
-        if (pending.length === 0) return d
-
-        const summary = {
-          added: pending.filter((s) => s.status === 'new').length,
-          changed: pending.filter((s) => s.status === 'changed').length,
-          removed: pending.filter((s) => s.status === 'deleted').length,
-        }
-        const dropped = new Set(
-          pending.filter((s) => s.status === 'deleted').map((s) => s.id),
+        if (!d.screens.some((s) => s.id === screenId)) return d
+        // Remove from every flow (single-flow membership), then re-insert.
+        let flows = d.flows.map((f) =>
+          f.screenIds.includes(screenId)
+            ? { ...f, screenIds: f.screenIds.filter((id) => id !== screenId) }
+            : f,
         )
-
-        // Surviving screens baseline to locked; their deleted states drop and
-        // the rest baseline too.
-        const screens = d.screens
-          .filter((s) => !dropped.has(s.id))
-          .map((s) => {
-            const states = s.states
-              .filter((st) => st.status !== 'deleted')
-              .map((st) => (st.status === 'locked' ? st : { ...st, status: 'locked' as const }))
-            return s.status === 'locked' && states === s.states
-              ? s
-              : { ...s, status: 'locked' as const, states }
+        if (toFlowId) {
+          flows = flows.map((f) => {
+            if (f.id !== toFlowId) return f
+            const ids = [...f.screenIds]
+            const i = refScreenId ? ids.indexOf(refScreenId) : -1
+            if (i < 0) ids.push(screenId)
+            else ids.splice(position === 'after' ? i + 1 : i, 0, screenId)
+            return { ...f, screenIds: ids }
           })
-
-        const commit: Commit = {
-          id: `commit-${Date.now().toString(36)}`,
-          message: message.trim(),
-          at: Date.now(),
-          summary,
         }
+        return { ...d, flows }
+      }, true)
+    },
+    [mutate],
+  )
 
-        return {
-          ...d,
-          screens,
-          flows: d.flows.map((f) => ({
-            ...f,
-            screenIds: f.screenIds.filter((sid) => !dropped.has(sid)),
-          })),
-          edges: d.edges.filter((e) => !dropped.has(e.source) && !dropped.has(e.target)),
-          commits: [commit, ...(d.commits ?? [])],
+  const moveState = useCallback(
+    (
+      stateId: string,
+      toScreenId: string,
+      refStateId: string | null,
+      position: 'before' | 'after',
+    ) => {
+      mutate((d) => {
+        let moved: ScreenState | undefined
+        const removed = d.screens.map((s) => {
+          if (!s.states.some((st) => st.id === stateId)) return s
+          moved = s.states.find((st) => st.id === stateId)
+          return { ...s, states: s.states.filter((st) => st.id !== stateId) }
+        })
+        if (!moved) return d
+        const screens = removed.map((s) => {
+          if (s.id !== toScreenId) return s
+          const states = [...s.states]
+          const i = refStateId ? states.findIndex((st) => st.id === refStateId) : -1
+          if (i < 0) states.push(moved!)
+          else states.splice(position === 'after' ? i + 1 : i, 0, moved!)
+          return { ...s, states }
+        })
+        return { ...d, screens }
+      }, true)
+    },
+    [mutate],
+  )
+
+  const moveFlow = useCallback(
+    (
+      flowId: string,
+      parent: { flowId: string } | { screenId: string } | null,
+      refFlowId: string | null,
+      position: 'before' | 'after',
+    ) => {
+      mutate((d) => {
+        const flow = d.flows.find((f) => f.id === flowId)
+        if (!flow) return d
+        // Reject cyclic nesting (a flow under itself or a descendant).
+        if (parent && 'flowId' in parent) {
+          if (parent.flowId === flowId || flowIsAncestor(d, flowId, parent.flowId)) return d
         }
+        const updated: Flow = {
+          ...flow,
+          parentFlowId: parent && 'flowId' in parent ? parent.flowId : undefined,
+          startsFromScreenId: parent && 'screenId' in parent ? parent.screenId : undefined,
+        }
+        // Reorder within the flat flows array (sibling order = array order).
+        const without = d.flows.filter((f) => f.id !== flowId)
+        let at = without.length
+        if (refFlowId && refFlowId !== flowId) {
+          const i = without.findIndex((f) => f.id === refFlowId)
+          if (i >= 0) at = position === 'after' ? i + 1 : i
+        }
+        const flows = [...without.slice(0, at), updated, ...without.slice(at)]
+        return { ...d, flows }
       }, true)
     },
     [mutate],
@@ -329,9 +441,8 @@ export function DocProvider({
         const id = `screen-${Date.now().toString(36)}`
         const newScreen: Screen = {
           id,
-          name: `yeniEkran${n + 1}`,
-          meta: 'Taslak',
-          status: 'new',
+          name: `newScreen${n + 1}`,
+          meta: 'Draft',
           surface: options?.surface ?? 'preview',
           position: { x: (n % 5) * 260, y: 540 },
           states: [],
@@ -362,12 +473,15 @@ export function DocProvider({
     [mutate],
   )
 
-  const setScreenLiveHtml = useCallback(
-    (id: string, liveHtml: string) => {
+  // Live surface = a single .html file or a folder with index.html. Store the
+  // bytes (singleton, keyed by id) + mark the doc; materialized to disk on save.
+  const setScreenLiveContent = useCallback(
+    (id: string, bundle: SurfaceBundle, kind: 'htmlFile' | 'htmlFolder') => {
+      setSurface(id, 'live', bundle)
       mutate(
         (d) => ({
           ...d,
-          screens: d.screens.map((s) => (s.id === id ? { ...s, liveHtml } : s)),
+          screens: d.screens.map((s) => (s.id === id ? { ...s, liveContent: kind } : s)),
         }),
         true,
       )
@@ -375,11 +489,32 @@ export function DocProvider({
     [mutate],
   )
 
+  // Preview surface = an image only (data URL in the doc).
+  const setScreenPreviewImage = useCallback(
+    (id: string, previewImage: string) => {
+      mutate(
+        (d) => ({
+          ...d,
+          screens: d.screens.map((s) =>
+            s.id === id ? { ...s, previewImage, previewContent: 'image' } : s,
+          ),
+        }),
+        true,
+      )
+    },
+    [mutate],
+  )
+
+  const getRenderHtml = useCallback(
+    (id: string, surface: ScreenSurface) => getSurfaceHtml(id, surface),
+    [],
+  )
+
   const addFlow = useCallback(
     (parent?: { flowId: string } | { screenId: string }) => {
       mutate((d) => {
         const id = `flow-${Date.now().toString(36)}`
-        const flow: Flow = { id, name: 'yeniAkis', kind: 'sub', screenIds: [] }
+        const flow: Flow = { id, name: 'newFlow', kind: 'sub', screenIds: [] }
         if (parent && 'screenId' in parent) flow.startsFromScreenId = parent.screenId
         else if (parent && 'flowId' in parent) flow.parentFlowId = parent.flowId
         return { ...d, flows: [...d.flows, flow] }
@@ -445,7 +580,7 @@ export function DocProvider({
     (screenId: string) => {
       mutate((d) => {
         const id = `state-${Date.now().toString(36)}`
-        const state: ScreenState = { id, name: 'yeniDurum', status: 'new' }
+        const state: ScreenState = { id, name: 'newState' }
         return {
           ...d,
           screens: d.screens.map((s) =>
@@ -582,10 +717,13 @@ export function DocProvider({
       removeScreens,
       addScreen,
       renameScreen,
-      setScreenStatus,
-      commitChanges,
+      reorderScreen,
+      moveState,
+      moveFlow,
       setScreenSurface,
-      setScreenLiveHtml,
+      setScreenLiveContent,
+      setScreenPreviewImage,
+      getRenderHtml,
       removeScreen,
       addFlow,
       renameFlow,
@@ -596,12 +734,17 @@ export function DocProvider({
       setDevice,
       closeProject,
     }),
+    // surfaceRevision is intentionally a dep: it forces the context value to
+    // recompute when on-disk surface bytes load/change so getRenderHtml
+    // consumers re-render (the bytes live in the singleton store, not the doc).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [
       doc,
       ref,
       storage.label,
       saveState,
       syncKey,
+      surfaceRevision,
       visibleSelectedScreenId,
       moveScreen,
       connectScreens,
@@ -609,10 +752,13 @@ export function DocProvider({
       removeScreens,
       addScreen,
       renameScreen,
-      setScreenStatus,
-      commitChanges,
+      reorderScreen,
+      moveState,
+      moveFlow,
       setScreenSurface,
-      setScreenLiveHtml,
+      setScreenLiveContent,
+      setScreenPreviewImage,
+      getRenderHtml,
       removeScreen,
       addFlow,
       renameFlow,

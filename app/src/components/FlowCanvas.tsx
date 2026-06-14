@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, type MouseEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, type MouseEvent } from 'react'
 import {
   Background,
   BackgroundVariant,
@@ -44,35 +44,47 @@ function FlowInner() {
   const [nodes, setNodes, onNodesChange] = useNodesState<Node<ScreenNodeData>>([])
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([])
   const { fitView } = useReactFlow()
+  const initialFitDone = useRef(false)
+
+  const scheduleInitialFit = useCallback(() => {
+    if (initialFitDone.current) return undefined
+    const raf = requestAnimationFrame(() => {
+      if (initialFitDone.current) return
+      const panel = document.querySelector('.flow-panel')
+      if (!panel?.clientWidth || !panel?.clientHeight) return
+      fitView({ padding: 0.25 })
+      initialFitDone.current = true
+    })
+    return () => cancelAnimationFrame(raf)
+  }, [fitView])
 
   // Lane center-lines for the background guides, derived from the same
   // layout engine (device-aware) that positions the nodes.
   const laneYs = useMemo(() => computeLayout(doc).laneYs, [doc])
 
-  // Keep the graph framed. The Dockview panel reports a 0-size on first mount
-  // and only settles a frame later, so the initial `fitView` lands on the wrong
-  // box and the schema sticks to the top. Re-fit whenever the panel resizes
-  // (the observer also fires once on observe → correct initial framing).
+  // Fit only once when the panel first gets a real size. After that the camera
+  // belongs to the user; structural edits must not snap the viewport back.
   useEffect(() => {
     const panel = document.querySelector('.flow-panel')
     if (!panel) return
-    const refit = () => fitView({ padding: 0.25 })
-    const observer = new ResizeObserver(refit)
+    const observer = new ResizeObserver(() => scheduleInitialFit())
     observer.observe(panel)
-    return () => observer.disconnect()
-  }, [fitView])
+    const cancelInitialFit = scheduleInitialFit()
+    return () => {
+      observer.disconnect()
+      cancelInitialFit?.()
+    }
+  }, [scheduleInitialFit])
 
   // Reseed transient React Flow state from the doc on mount and whenever the
   // structure changes externally (file edit) or via the tree (syncKey bump).
-  // Positions are graph-derived (nodes aren't draggable), so this also
-  // re-runs the auto-layout after every structural edit.
+  // Positions are graph-derived (nodes aren't draggable), but viewport/camera
+  // is intentionally preserved across those structural edits.
   useEffect(() => {
     setNodes(docToNodes(doc))
     setEdges(docToEdges(doc))
-    // Frame the freshly-seeded nodes once they've rendered (next frame), so
-    // the schema is centered rather than stuck at the top.
-    const raf = requestAnimationFrame(() => fitView({ padding: 0.25 }))
-    return () => cancelAnimationFrame(raf)
+    const cancelInitialFit = scheduleInitialFit()
+    return () => cancelInitialFit?.()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [syncKey])
 
@@ -121,7 +133,7 @@ function FlowInner() {
 
   const handleNodeDoubleClick = useCallback(
     (_event: MouseEvent, node: Node<ScreenNodeData>) => {
-      const next = window.prompt('Ekran adı', node.data.name)
+      const next = window.prompt('Screen name', node.data.name)
       if (next && next.trim() && next !== node.data.name) {
         renameScreen(node.id, next.trim())
       }
@@ -150,9 +162,8 @@ function FlowInner() {
         nodeTypes={nodeTypes}
         colorMode={theme}
         nodesDraggable={false}
-        fitView
-        fitViewOptions={{ padding: 0.25 }}
-        // Trackpad: iki parmakla kaydır → pan, iki parmakla sıkıştır → zoom.
+        deleteKeyCode={null}
+        // Trackpad: two-finger swipe → pan, two-finger pinch → zoom.
         panOnScroll
         panOnScrollMode={PanOnScrollMode.Free}
         panOnScrollSpeed={1.2}
@@ -178,11 +189,11 @@ function FlowToolRail({
   onAddLive: () => void
 }) {
   return (
-    <aside className="flow-tool-rail" aria-label="Flow araçları">
+    <aside className="flow-tool-rail" aria-label="Flow tools">
       <button
         className="flow-tool-rail__btn"
         type="button"
-        title="Preview ekranı"
+        title="Preview screen"
         onClick={onAddPreview}
       >
         <Monitor size={17} strokeWidth={1.8} />
@@ -190,7 +201,7 @@ function FlowToolRail({
       <button
         className="flow-tool-rail__btn"
         type="button"
-        title="Live HTML ekranı"
+        title="Live HTML screen"
         onClick={onAddLive}
       >
         <Code2 size={17} strokeWidth={1.8} />

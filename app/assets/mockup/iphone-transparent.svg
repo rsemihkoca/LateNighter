@@ -1,0 +1,18 @@
+<svg width="372" height="800" viewBox="0 0 372 800" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Bezel ring: outer rounded rect minus inner glass cutout (evenodd → hole).
+       The glass center is transparent so screen content shows through behind
+       this frame; the bezel + dynamic island render on top. -->
+  <path
+    fill-rule="evenodd"
+    fill="#0b0b0d"
+    d="M66,0 h240 a66,66 0 0 1 66,66 v668 a66,66 0 0 1 -66,66 h-240 a66,66 0 0 1 -66,-66 v-668 a66,66 0 0 1 66,-66 z
+       M66,10 h240 a56,56 0 0 1 56,56 v668 a56,56 0 0 1 -56,56 h-240 a56,56 0 0 1 -56,-56 v-668 a56,56 0 0 1 56,-56 z"
+  />
+  <!-- Inner glass edge highlight -->
+  <rect x="10.75" y="10.75" width="350.5" height="778.5" rx="55.25" ry="55.25"
+        fill="none" stroke="#2a2a2e" stroke-width="1.5" />
+  <!-- Dynamic Island -->
+  <rect x="134" y="17" width="104" height="30" rx="15" ry="15" fill="#050506" />
+  <circle cx="223" cy="32" r="5" fill="#0d0f14" />
+  <circle cx="223" cy="32" r="2.4" fill="#1b2733" />
+</svg>

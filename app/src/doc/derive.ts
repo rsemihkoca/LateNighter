@@ -1,7 +1,7 @@
 import { MarkerType, type Edge, type Node } from '@xyflow/react'
 import type { ScreenNodeData } from '../components/ScreenNode'
 import { computeLayout } from './layout'
-import type { Flow, ProjectDoc, Screen, ScreenStatus } from './types'
+import type { Flow, ProjectDoc, Screen } from './types'
 
 // -------- Canvas projection (doc → React Flow) ----------------------
 
@@ -17,9 +17,10 @@ export function docToNodes(doc: ProjectDoc): Node<ScreenNodeData>[] {
     data: {
       name: screen.name,
       meta: screen.meta,
-      status: screen.status,
       surface: screen.surface ?? 'preview',
-      liveHtml: screen.liveHtml,
+      previewImage: screen.previewImage,
+      previewContent: screen.previewContent,
+      liveContent: screen.liveContent,
       stateCount: screen.states.length,
       deviceId: doc.deviceId,
     },
@@ -51,7 +52,6 @@ export interface TreeNode {
   label: string
   kind: TreeKind
   screenId?: string
-  status?: ScreenStatus
   meta?: string
   children: TreeNode[]
 }
@@ -62,7 +62,6 @@ function buildScreenNode(doc: ProjectDoc, screen: Screen): TreeNode {
     label: st.name,
     kind: 'state',
     screenId: screen.id,
-    status: st.status,
     children: [],
   }))
   const byId = new Map(doc.screens.map((s) => [s.id, s]))
@@ -75,7 +74,6 @@ function buildScreenNode(doc: ProjectDoc, screen: Screen): TreeNode {
         label: target ? target.name : edge.target,
         kind: 'link' as const,
         screenId: edge.target,
-        status: target?.status,
         children: [],
       }
     })
@@ -88,7 +86,6 @@ function buildScreenNode(doc: ProjectDoc, screen: Screen): TreeNode {
     label: screen.name,
     kind: 'screen',
     screenId: screen.id,
-    status: screen.status,
     meta: screen.meta,
     children: [...states, ...links, ...subFlows],
   }
@@ -131,7 +128,7 @@ export function docToTree(doc: ProjectDoc): TreeNode {
   if (orphans.length > 0) {
     children.push({
       id: '__unassigned__',
-      label: 'Bağlı değil',
+      label: 'Unassigned',
       kind: 'group',
       children: orphans.map((s) => buildScreenNode(doc, s)),
     })

@@ -2,7 +2,12 @@ import { invoke, isTauri } from '@tauri-apps/api/core'
 import { open } from '@tauri-apps/plugin-dialog'
 import type { ProjectDoc } from '../doc/types'
 import { docToTreeSpec, type FolderSpec, type TreeEntry } from '../doc/treeSync'
-import { slugify, type ProjectRef, type ProjectStorage } from './types'
+import {
+  slugify,
+  type ProjectRef,
+  type ProjectStorage,
+  type SurfaceDiskEntry,
+} from './types'
 
 const LAST_DIR_KEY = 'latenighter:tauri-dir'
 
@@ -88,6 +93,30 @@ export function createTauriStorage(dir: string): ProjectStorage {
 
     async readTree(ref: ProjectRef): Promise<TreeEntry[]> {
       return invoke<TreeEntry[]>('read_tree', { dir, id: ref.id })
+    },
+
+    // Hydrate surface bytes from disk: for each screen folder, read its live/
+    // and preview/ subdirs. Keyed by the frontmatter id → survives renames.
+    async readSurfaceAssets(ref: ProjectRef): Promise<SurfaceDiskEntry[]> {
+      const tree = await invoke<TreeEntry[]>('read_tree', { dir, id: ref.id })
+      const root = `${dir}/${ref.id}`
+      const out: SurfaceDiskEntry[] = []
+      for (const entry of tree) {
+        if (entry.kind !== 'screen') continue
+        const screenId = entry.frontmatter.id?.trim()
+        if (!screenId) continue
+        for (const surface of ['live', 'preview'] as const) {
+          try {
+            const files = await invoke<{ path: string; base64: string }[]>('read_dir_files', {
+              dir: `${root}/${entry.path}/${surface}`,
+            })
+            if (files.length) out.push({ screenId, surface, files })
+          } catch {
+            /* no such subdir — screen has no html for this surface */
+          }
+        }
+      }
+      return out
     },
   }
 }

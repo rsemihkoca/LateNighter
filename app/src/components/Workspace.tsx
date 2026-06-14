@@ -16,14 +16,14 @@ const components: Record<string, (props: IDockviewPanelProps) => React.JSX.Eleme
   tree: () => <Sidebar />,
 }
 
-// Tab'lar kapatılamaz: default tab'ı hideClose ile sarmalayıp X butonunu gizle.
+// Tabs can't be closed: wrap the default tab with hideClose to hide the X button.
 function NoCloseTab(props: IDockviewPanelHeaderProps) {
   return <DockviewDefaultTab {...props} hideClose />
 }
 
 function onReady(event: DockviewReadyEvent) {
-  // Ana panel: React Flow canvas (doc'un görünümü). renderer:'always' →
-  // tab değişiminde / panel sürüklenirken unmount olmaz.
+  // Main panel: React Flow canvas (the doc's view). renderer:'always' →
+  // it won't unmount on tab change / while the panel is dragged.
   event.api.addPanel({
     id: 'flow',
     component: 'flow',
@@ -31,7 +31,7 @@ function onReady(event: DockviewReadyEvent) {
     renderer: 'always',
   })
 
-  // Sol ayrı panel: Tree navigator (doc'un hiyerarşik görünümü).
+  // Separate left panel: Tree navigator (the doc's hierarchical view).
   const tree = event.api.addPanel({
     id: 'tree',
     component: 'tree',

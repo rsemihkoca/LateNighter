@@ -142,7 +142,7 @@ export function ProjectPicker({ onOpen }: { onOpen: (session: DocSession) => voi
           openOrCreateFolderProject: true,
         })
       } else {
-        setError('Klasör izni verilmedi.')
+        setError('Folder permission denied.')
       }
     } catch (e) {
       setError(String(e))
@@ -187,7 +187,7 @@ export function ProjectPicker({ onOpen }: { onOpen: (session: DocSession) => voi
           <div>
             <h1 className="picker__title">LateNighter</h1>
             <p className="picker__subtitle">
-              Bir proje seç — JSON tek kaynak, React Flow ve tree onun görünümü.
+              Pick a project — JSON is the single source; React Flow and the tree are its views.
             </p>
           </div>
         </div>
@@ -197,14 +197,14 @@ export function ProjectPicker({ onOpen }: { onOpen: (session: DocSession) => voi
             {tauri ? (
               <>
                 <button className="picker__choice" type="button" onClick={chooseFolder}>
-                  <span className="picker__choice-title">📂 Klasör Seç</span>
+                  <span className="picker__choice-title">📂 Choose Folder</span>
                   <span className="picker__choice-desc">
-                    Klasör adıyla projeyi açar; yoksa boş bir proje oluşturur.
+                    Opens the project named after the folder, or creates an empty one.
                   </span>
                 </button>
                 {lastTauriDir && (
                   <button className="picker__choice" type="button" onClick={reconnectTauri}>
-                    <span className="picker__choice-title">↩ Son klasöre dön</span>
+                    <span className="picker__choice-title">↩ Back to last folder</span>
                     <span className="picker__choice-desc">{lastTauriDir}</span>
                   </button>
                 )}
@@ -212,22 +212,22 @@ export function ProjectPicker({ onOpen }: { onOpen: (session: DocSession) => voi
             ) : fsSupported ? (
               <>
                 <button className="picker__choice" type="button" onClick={chooseFolder}>
-                  <span className="picker__choice-title">📁 Klasör Seç</span>
+                  <span className="picker__choice-title">📁 Choose Folder</span>
                   <span className="picker__choice-desc">
-                    Klasör adıyla projeyi açar; yoksa boş bir proje oluşturur.
+                    Opens the project named after the folder, or creates an empty one.
                   </span>
                 </button>
                 {lastDir && (
                   <button className="picker__choice" type="button" onClick={reconnectLast}>
-                    <span className="picker__choice-title">↩ Son klasöre dön</span>
+                    <span className="picker__choice-title">↩ Back to last folder</span>
                     <span className="picker__choice-desc">{lastDir.name}</span>
                   </button>
                 )}
               </>
             ) : (
               <p className="picker__note">
-                Tarayıcın klasör erişimini desteklemiyor (Chrome/Arc/Brave öner). Scratch
-                ile devam edebilirsin.
+                Your browser doesn't support folder access (try Chrome/Arc/Brave). You can
+                continue with scratch.
               </p>
             )}
             <button
@@ -235,9 +235,9 @@ export function ProjectPicker({ onOpen }: { onOpen: (session: DocSession) => voi
               type="button"
               onClick={() => activateStorage(localStorageBackend)}
             >
-              <span className="picker__choice-title">⚡ Dosyasız başla (scratch)</span>
+              <span className="picker__choice-title">⚡ Start without files (scratch)</span>
               <span className="picker__choice-desc">
-                Tarayıcı deposunda — hızlı deneme, gerçek .json dosyası olmadan.
+                In browser storage — quick experiments, without a real .json file.
               </span>
             </button>
           </div>
@@ -253,14 +253,14 @@ export function ProjectPicker({ onOpen }: { onOpen: (session: DocSession) => voi
                   setProjects([])
                 }}
               >
-                değiştir
+                change
               </button>
             </div>
 
             <div className="picker__list">
               {projects.length === 0 && (
                 <p className="picker__note">
-                  Bu konumda proje yok — klasör adıyla oluşturabilirsin.
+                  No projects here — create one with a name.
                 </p>
               )}
               {projects.map((ref) => (
@@ -280,7 +280,7 @@ export function ProjectPicker({ onOpen }: { onOpen: (session: DocSession) => voi
             <div className="picker__create">
               <input
                 className="picker__input"
-                placeholder="Proje adı (opsiyonel)…"
+                placeholder="Project name (optional)…"
                 value={newName}
                 disabled={busy}
                 onChange={(e) => setNewName(e.target.value)}
@@ -292,7 +292,7 @@ export function ProjectPicker({ onOpen }: { onOpen: (session: DocSession) => voi
                 disabled={busy}
                 onClick={createNew}
               >
-                + Yeni proje
+                + New project
               </button>
             </div>
           </div>

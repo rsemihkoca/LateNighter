@@ -82,9 +82,23 @@ fn node_kind(name: &str) -> Option<&'static str> {
 /// A desired node folder: relative "/"-joined path + the YAML frontmatter body
 /// (between the --- fences) the frontend wants stored.
 #[derive(Deserialize)]
+struct AssetSpec {
+    /// File name within the node folder; may contain "/" for a subfolder.
+    name: String,
+    #[serde(default)]
+    text: Option<String>,
+    #[serde(default)]
+    base64: Option<String>,
+}
+
+#[derive(Deserialize)]
 struct FolderSpec {
     path: String,
     frontmatter: String,
+    #[serde(default)]
+    assets: Vec<AssetSpec>,
+    #[serde(default, rename = "managedDirs")]
+    managed_dirs: Vec<String>,
 }
 
 /// A node folder read back from disk: relative path, kind, parsed frontmatter.
@@ -177,9 +191,56 @@ fn prune(folder: &Path, desired: &HashSet<PathBuf>) -> Result<(), String> {
     Ok(())
 }
 
+/// Write a node folder's payload files and reconcile managed artifacts.
+///  - Top-level `preview.*` image files: removed when not in `assets` (the
+///    image is JSON-canonical, so always authoritative).
+///  - Each subdir in `managed_dirs` ("live"/"preview") is wiped then rewritten
+///    fresh from `assets`, so replacing a folder leaves no orphan files and
+///    clearing it removes the subdir. Subdirs NOT listed are left untouched
+///    (e.g. before the store is hydrated → no data loss).
+fn write_assets(
+    folder: &Path,
+    assets: &[AssetSpec],
+    managed_dirs: &[String],
+) -> Result<(), String> {
+    let desired: HashSet<&str> = assets.iter().map(|a| a.name.as_str()).collect();
+    if let Ok(entries) = fs::read_dir(folder) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let name = match path.file_name().and_then(|n| n.to_str()) {
+                Some(n) => n.to_string(),
+                None => continue,
+            };
+            if path.is_file() && name.starts_with("preview.") && !desired.contains(name.as_str()) {
+                fs::remove_file(&path).map_err(|e| e.to_string())?;
+            }
+        }
+    }
+    // Wipe each managed subdir; the write loop below recreates the desired files.
+    for dir in managed_dirs {
+        let sub = folder.join(dir);
+        if sub.exists() {
+            fs::remove_dir_all(&sub).map_err(|e| e.to_string())?;
+        }
+    }
+    for asset in assets {
+        let dest = folder.join(&asset.name);
+        if let Some(parent) = dest.parent() {
+            fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        }
+        if let Some(b64) = &asset.base64 {
+            fs::write(&dest, base64_decode(b64)?).map_err(|e| e.to_string())?;
+        } else if let Some(text) = &asset.text {
+            fs::write(&dest, text.as_bytes()).map_err(|e| e.to_string())?;
+        }
+    }
+    Ok(())
+}
+
 /// Reconcile the mirror folder to match `folders`: create missing node dirs,
-/// (re)write each node's `.md` frontmatter (preserving any existing body), and
-/// delete node dirs/`.md` files no longer present in the spec.
+/// (re)write each node's `.md` frontmatter (preserving any existing body),
+/// materialize screen asset files, and delete node dirs/`.md` files no longer
+/// present in the spec.
 #[tauri::command]
 fn materialize_tree(dir: String, id: String, folders: Vec<FolderSpec>) -> Result<(), String> {
     let root = mirror_root(&dir, &id);
@@ -201,6 +262,8 @@ fn materialize_tree(dir: String, id: String, folders: Vec<FolderSpec>) -> Result
             .unwrap_or_default();
         let contents = format!("---\n{}\n---\n{}", spec.frontmatter.trim_end(), body);
         fs::write(&md_path, contents).map_err(|e| e.to_string())?;
+
+        write_assets(&abs, &spec.assets, &spec.managed_dirs)?;
     }
 
     prune(&root, &desired)?;
@@ -288,6 +351,124 @@ fn tree_revision(dir: String, id: String) -> Result<u64, String> {
     Ok(acc)
 }
 
+// ---- Folder import (live surface) ---------------------------------------
+// Read every file under a user-picked folder, base64-encoded, so the
+// frontend can inline a self-contained HTML page (index.html + its assets).
+
+#[derive(Serialize)]
+struct DirFile {
+    path: String,
+    base64: String,
+}
+
+const MAX_DIR_FILES: usize = 3000;
+const MAX_DIR_BYTES: u64 = 64 * 1024 * 1024;
+
+fn base64_encode(bytes: &[u8]) -> String {
+    const TABLE: &[u8; 64] =
+        b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
+    for chunk in bytes.chunks(3) {
+        let b0 = chunk[0];
+        let b1 = *chunk.get(1).unwrap_or(&0);
+        let b2 = *chunk.get(2).unwrap_or(&0);
+        out.push(TABLE[(b0 >> 2) as usize] as char);
+        out.push(TABLE[(((b0 & 0x03) << 4) | (b1 >> 4)) as usize] as char);
+        out.push(if chunk.len() > 1 {
+            TABLE[(((b1 & 0x0f) << 2) | (b2 >> 6)) as usize] as char
+        } else {
+            '='
+        });
+        out.push(if chunk.len() > 2 {
+            TABLE[(b2 & 0x3f) as usize] as char
+        } else {
+            '='
+        });
+    }
+    out
+}
+
+/// Decode standard base64 (ignores whitespace/newlines, stops at padding).
+fn base64_decode(s: &str) -> Result<Vec<u8>, String> {
+    fn val(c: u8) -> Option<u8> {
+        match c {
+            b'A'..=b'Z' => Some(c - b'A'),
+            b'a'..=b'z' => Some(c - b'a' + 26),
+            b'0'..=b'9' => Some(c - b'0' + 52),
+            b'+' => Some(62),
+            b'/' => Some(63),
+            _ => None,
+        }
+    }
+    let mut out = Vec::with_capacity(s.len() / 4 * 3);
+    let mut buf = 0u32;
+    let mut bits = 0u8;
+    for &c in s.as_bytes() {
+        if c == b'=' {
+            break;
+        }
+        let Some(v) = val(c) else { continue };
+        buf = (buf << 6) | v as u32;
+        bits += 6;
+        if bits >= 8 {
+            bits -= 8;
+            out.push((buf >> bits) as u8);
+        }
+    }
+    Ok(out)
+}
+
+fn collect_dir_files(
+    root: &Path,
+    cur: &Path,
+    out: &mut Vec<DirFile>,
+    total: &mut u64,
+) -> Result<(), String> {
+    for entry in fs::read_dir(cur).map_err(|e| e.to_string())? {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let path = entry.path();
+        // Skip dotfiles / dotdirs (.git, .DS_Store, …).
+        if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+            if name.starts_with('.') {
+                continue;
+            }
+        }
+        let ft = entry.file_type().map_err(|e| e.to_string())?;
+        if ft.is_dir() {
+            collect_dir_files(root, &path, out, total)?;
+        } else if ft.is_file() {
+            if out.len() >= MAX_DIR_FILES {
+                return Err("folder has too many files".into());
+            }
+            let bytes = fs::read(&path).map_err(|e| e.to_string())?;
+            *total += bytes.len() as u64;
+            if *total > MAX_DIR_BYTES {
+                return Err("folder is too large".into());
+            }
+            let rel = path.strip_prefix(root).unwrap_or(&path);
+            out.push(DirFile {
+                path: rel.to_string_lossy().replace('\\', "/"),
+                base64: base64_encode(&bytes),
+            });
+        }
+    }
+    Ok(())
+}
+
+/// Read all files under `dir` (recursively) as base64. Used to inline a
+/// folder's index.html + assets into a single live-surface HTML string.
+#[tauri::command]
+fn read_dir_files(dir: String) -> Result<Vec<DirFile>, String> {
+    let root = PathBuf::from(&dir);
+    if !root.is_dir() {
+        return Err("not a directory".into());
+    }
+    let mut out = Vec::new();
+    let mut total = 0u64;
+    collect_dir_files(&root, &root, &mut out, &mut total)?;
+    Ok(out)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -299,7 +480,8 @@ pub fn run() {
             project_revision,
             materialize_tree,
             read_tree,
-            tree_revision
+            tree_revision,
+            read_dir_files
         ])
         .setup(|app| {
             if cfg!(debug_assertions) {

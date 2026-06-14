@@ -62,7 +62,7 @@
   background: color-mix(in srgb, var(--bg-panel) 88%, var(--bg-subtle));
   user-select: none;
 }
-/* macOS Overlay titlebar: trafik ışıklarının altına girmesin, rahat boşluk. */
+/* macOS overlay titlebar: keep clear of the traffic lights, comfortable padding. */
 .app-shell[data-tauri-window="true"] .chrome {
   padding-left: 96px;
 }
@@ -535,35 +535,39 @@
   /* empty for now — future screen UI mounts here */
 }
 
-/* -------- DeviceMockup (photoreal SVG frame, used as-is) ---------------- */
+/* -------- DeviceMockup (CSS-drawn frame, spec-driven) ------------------- */
+/* The body's padding (set inline = bezelPx) is the bezel; the glass slot fills
+   it and clips content to the display radius; the island pill sits on top. */
 .device-mockup {
   position: relative;
   display: block;
   user-select: none;
+  box-sizing: border-box;
 }
-.device-mockup__frame {
-  position: absolute;
-  inset: 0;
+.device-mockup__glass {
+  position: relative;
   width: 100%;
   height: 100%;
-  z-index: 0;
-  pointer-events: none;
-}
-.device-mockup__screen {
-  position: absolute;
-  z-index: 1;
   overflow: hidden;
   background: #fff;
+  box-sizing: border-box;
   line-height: normal;
 }
-/* "Mockup yok" — a plain blank screen instead of a phone frame. */
-.device-mockup__blank {
-  width: 100%;
-  height: 100%;
-  overflow: hidden;
+.device-mockup__island {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #050506;
+  z-index: 2;
+  pointer-events: none;
+}
+/* "No mockup" — a plain rounded screen card instead of a phone frame. */
+.device-mockup--none {
+  background: transparent;
+}
+.device-mockup--none .device-mockup__glass {
   background: var(--bg-subtle);
-  border: 1px dashed var(--border-strong);
-  box-sizing: border-box;
+  box-shadow: inset 0 0 0 1px var(--border-strong);
 }
 
 /* Selection ring hugs the phone body */
@@ -666,13 +670,28 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  cursor: text;
+}
+.screen-card__name-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  padding: 1px 4px;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  background: var(--bg-panel);
+  color: var(--text-strong);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  outline: none;
 }
 .surface-switch {
   flex: 0 0 auto;
   display: inline-grid;
-  grid-template-columns: 27px 20px;
+  grid-template-columns: 34px 26px;
   gap: 1px;
-  height: 14px;
+  height: 11px;
   padding: 1px;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
@@ -686,7 +705,7 @@
   background: transparent;
   color: var(--text-muted);
   font: inherit;
-  font-size: 6.5px;
+  font-size: 6px;
   font-weight: 700;
   line-height: 1;
   cursor: pointer;
@@ -717,14 +736,7 @@
   justify-content: center;
   min-height: 0;
 }
-.screen-card.status-deleted {
-  opacity: 0.7;
-}
-.screen-card.status-deleted .screen-card__name {
-  text-decoration: line-through;
-  color: var(--text-muted);
-}
-.live-placeholder {
+.surface-add-placeholder {
   display: flex;
   width: 100%;
   height: 100%;
@@ -732,21 +744,29 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  border: 0;
-  background: transparent;
+  gap: 5px;
+  background: #e5e7eb;
   color: #6b7280;
   font-family: var(--sans);
-  cursor: pointer;
 }
-.live-placeholder__label {
-  padding: 5px 10px;
+.surface-add-placeholder__btn {
+  padding: 4px 10px;
   border: 1px solid #d8dde7;
   border-radius: var(--radius-pill);
   background: rgba(255, 255, 255, 0.86);
   box-shadow: 0 4px 14px rgba(17, 24, 39, 0.08);
-  font-size: 11px;
+  color: inherit;
+  font-family: inherit;
+  font-size: 10.5px;
   font-weight: 700;
   letter-spacing: 0;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+.surface-add-placeholder__btn:hover {
+  background: #fff;
+  border-color: var(--accent);
+  color: var(--accent);
 }
 .live-frame {
   display: block;
@@ -754,6 +774,16 @@
   height: 100%;
   border: 0;
   background: #fff;
+}
+.preview-image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  /* Fit the whole image inside the screen glass (letterboxed if needed). */
+  object-fit: contain;
+  object-position: center;
+  background: #fff;
+  cursor: pointer;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -765,7 +795,7 @@
   }
 }
 
-/* -------- Sidebar: activity bar + views (VS Code / Cursor style) ----- */
+/* -------- Sidebar: the Explorer tree fills the panel ---------------- */
 .sidebar {
   display: flex;
   flex-direction: column;
@@ -774,424 +804,26 @@
   min-width: 0;
   background: var(--bg-panel);
 }
-/* Top bar: a horizontal row of view icons above the panel (VS Code top layout). */
-.activity-bar {
-  flex: 0 0 auto;
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  width: 100%;
-  height: 38px;
-  padding: 0 8px;
-  background: color-mix(in srgb, var(--bg-panel) 90%, var(--bg-subtle));
-  border-bottom: 1px solid var(--border);
-}
-.activity-bar__btn {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 34px;
-  height: 34px;
-  border: none;
-  border-radius: var(--radius);
-  background: transparent;
-  color: var(--text-soft);
-  cursor: pointer;
-  transition: color var(--dur-quick) var(--ease-out),
-    background var(--dur-quick) var(--ease-out);
-}
-.activity-bar__btn:hover {
-  color: var(--text-strong);
-  background: var(--bg-fill-tertiary);
-}
-.activity-bar__btn.is-active {
-  color: var(--text-strong);
-  background: var(--bg-fill-secondary);
-}
-/* VS Code-style accent rail on the active view, under the icon (top bar). */
-.activity-bar__btn.is-active::before {
-  content: '';
-  position: absolute;
-  left: 6px;
-  right: 6px;
-  bottom: -3px;
-  height: 2px;
-  border-radius: 2px;
-  background: var(--accent);
-}
-.activity-bar__badge {
-  position: absolute;
-  right: -2px;
-  top: -2px;
-  min-width: 15px;
-  height: 15px;
-  padding: 0 3px;
-  box-sizing: border-box;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: var(--radius-pill);
-  background: var(--accent);
-  color: #fff;
-  font-size: 9px;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-  line-height: 1;
-}
 .sidebar__view {
   flex: 1 1 auto;
   min-height: 0;
   display: flex;
 }
 
-/* Shared chrome for the Search / Source Control views. */
-.side-panel {
-  display: flex;
-  flex-direction: column;
-  width: 100%;
-  min-width: 0;
-  height: 100%;
-  background: var(--bg-panel);
-  color: var(--text);
-  font-family: var(--sans);
-}
-.side-panel__head {
-  flex: 0 0 auto;
-  padding: 10px 12px 6px;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--text-muted);
-}
-
-/* -------- Search view ---------------------------------------------- */
-.search-box {
-  flex: 0 0 auto;
-  position: relative;
-  display: flex;
-  align-items: center;
-  margin: 0 10px 6px;
-}
-.search-box__icon {
-  position: absolute;
-  left: 8px;
-  color: var(--text-soft);
-  pointer-events: none;
-}
-.search-box__input {
-  width: 100%;
-  height: 28px;
-  padding: 0 26px 0 28px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--bg-subtle);
-  color: var(--text-strong);
-  font-size: 12.5px;
-  font-family: inherit;
-  outline: none;
-}
-.search-box__input:focus {
-  border-color: var(--accent);
-  background: var(--bg-panel);
-}
-.search-box__input::placeholder {
-  color: var(--text-faint);
-}
-.search-box__clear {
-  position: absolute;
-  right: 5px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 18px;
-  height: 18px;
-  border: none;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--text-muted);
-  cursor: pointer;
-}
-.search-box__clear:hover {
-  background: var(--bg-fill);
-  color: var(--text-strong);
-}
-.search-results {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow-y: auto;
-  padding: 2px 6px 10px;
-  scrollbar-width: thin;
-}
-.search-empty {
-  margin: 8px 6px;
-  font-size: 11.5px;
-  line-height: 1.5;
-  color: var(--text-faint);
-}
-.search-results__count {
-  padding: 4px 6px 6px;
-  font-size: 10.5px;
-  color: var(--text-faint);
-}
-.search-result {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  padding: 5px 8px;
-  border: 1px solid transparent;
-  border-radius: var(--radius);
-  background: transparent;
-  color: var(--text);
-  font-family: inherit;
-  font-size: 12.5px;
-  text-align: left;
-  cursor: pointer;
-}
-.search-result:hover {
-  background: color-mix(in srgb, var(--text-strong) 7%, transparent);
-}
-.search-result.is-active {
-  background: color-mix(in srgb, var(--accent) 12%, transparent);
-  border-color: color-mix(in srgb, var(--accent) 28%, var(--border));
-}
-.search-result:disabled {
-  cursor: default;
-}
-.search-result__icon {
-  flex: 0 0 auto;
-  display: inline-flex;
-  width: 16px;
-  justify-content: center;
-}
-.search-result__label {
-  flex: 0 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.search-result__hit {
-  background: color-mix(in srgb, var(--accent) 26%, transparent);
-  color: inherit;
-  border-radius: 2px;
-}
-.search-result__rel {
-  flex: 0 0 auto;
-  color: var(--text-faint);
-}
-.search-result__context {
-  flex: 0 1 auto;
-  min-width: 0;
-  margin-left: auto;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 10.5px;
-  color: var(--text-faint);
-}
-.search-result__dot {
-  flex: 0 0 auto;
-  width: 6px;
-  height: 6px;
-}
-
-/* -------- Source Control view -------------------------------------- */
-.commit-box {
-  flex: 0 0 auto;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 0 10px 8px;
-  border-bottom: 1px solid var(--border-soft);
-}
-.commit-box__msg {
-  width: 100%;
-  box-sizing: border-box;
-  padding: 7px 9px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--bg-subtle);
-  color: var(--text-strong);
-  font-size: 12.5px;
-  font-family: inherit;
-  line-height: 1.4;
-  resize: vertical;
-  outline: none;
-}
-.commit-box__msg:focus {
-  border-color: var(--accent);
-  background: var(--bg-panel);
-}
-.commit-box__msg::placeholder {
-  color: var(--text-faint);
-}
-.commit-box__btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  height: 28px;
-  border: 1px solid var(--accent);
-  border-radius: var(--radius);
-  background: var(--accent);
-  color: #fff;
-  font-size: 12px;
-  font-weight: 600;
-  font-family: inherit;
-  cursor: pointer;
-  transition: background var(--dur-quick) var(--ease-out);
-}
-.commit-box__btn:hover:not(:disabled) {
-  background: var(--accent-hover);
-  border-color: var(--accent-hover);
-}
-.commit-box__btn:disabled {
-  background: var(--bg-muted);
-  border-color: var(--border);
-  color: var(--text-faint);
-  cursor: default;
-}
-.sc-body {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow-y: auto;
-  scrollbar-width: thin;
-}
-.changes {
-  padding: 4px 6px 6px;
-}
-.changes__group {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  padding: 6px 6px 4px;
-  font-size: 10.5px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--text-muted);
-}
-.changes__group--log {
-  margin-top: 4px;
-  border-top: 1px solid var(--border-soft);
-}
-.changes__empty {
-  margin: 6px;
-  font-size: 11.5px;
-  line-height: 1.5;
-  color: var(--text-faint);
-}
-.change-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  padding: 5px 8px;
-  border: 1px solid transparent;
-  border-radius: var(--radius);
-  background: transparent;
-  color: var(--text);
-  font-family: inherit;
-  font-size: 12.5px;
-  text-align: left;
-  cursor: pointer;
-}
-.change-row:hover {
-  background: color-mix(in srgb, var(--text-strong) 7%, transparent);
-}
-.change-row.is-active {
-  background: color-mix(in srgb, var(--accent) 12%, transparent);
-  border-color: color-mix(in srgb, var(--accent) 28%, var(--border));
-}
-.change-row__name {
-  flex: 0 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.change-row.status-deleted .change-row__name {
-  text-decoration: line-through;
-  color: var(--text-muted);
-}
-.change-row__meta {
-  flex: 0 1 auto;
-  min-width: 0;
-  margin-left: auto;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 10.5px;
-  color: var(--text-faint);
-}
-.change-row__tag {
-  flex: 0 0 auto;
-  /* Auto margin pins the tag to the far right whether or not a meta is shown. */
-  margin-left: auto;
-  width: 16px;
-  text-align: center;
-  font-family: var(--mono);
-  font-size: 11px;
-  font-weight: 700;
-}
-.change-row.status-new .change-row__tag {
-  color: var(--green);
-}
-.change-row.status-changed .change-row__tag {
-  color: var(--amber);
-}
-.change-row.status-deleted .change-row__tag {
-  color: var(--red);
-}
-.commit-log {
-  padding: 0 6px 10px;
-}
-.commit-log__row {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  padding: 4px 8px;
-  font-size: 12px;
-  color: var(--text-muted);
-}
-.commit-log__icon {
-  flex: 0 0 auto;
-  color: var(--text-soft);
-}
-.commit-log__msg {
-  flex: 0 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--text);
-}
-.commit-log__time {
-  flex: 0 0 auto;
-  margin-left: auto;
-  font-size: 10.5px;
-  color: var(--text-faint);
-}
-
 /* -------- Dockview bridge ------------------------------------------- */
 .dv-content-container {
   position: relative;
 }
-/* Tab başlık barını kaldır (Tree/Flow yazıları) — sabit iki panel düzeni.
-   display:none yerine sıfır yükseklik: flex tüm alanı içeriğe verir ve
-   içerideki react-flow ResizeObserver doğru ölçer (üstte boşluk kalmaz). */
+/* Remove the tab title bar (Tree/Flow labels) — fixed two-panel layout.
+   Zero height instead of display:none: flex gives all space to the content
+   and the inner react-flow ResizeObserver measures correctly (no top gap). */
 .dv-tabs-and-actions-container {
   height: 0 !important;
   min-height: 0;
   border-bottom: none;
   overflow: hidden;
 }
-/* Panelleri belli et: her gruba ince bir border — aralarında net ayırıcı. */
+/* Distinguish panels: a thin border per group — a clear divider between them. */
 .dv-groupview {
   border: 1px solid var(--border);
   box-sizing: border-box;
